@@ -21,6 +21,7 @@ class MainDashboard:
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
         self.root.configure(bg="#ecf0f1")
 
+        # --- Top Header ---
         header_frame = tk.Frame(self.root, bg="#2C3E50", pady=15)
         header_frame.pack(fill="x")
         tk.Label(header_frame, text=f"Welcome, {self.username}!", font=("Arial", 20, "bold"), bg="#2C3E50", fg="white").pack(side=tk.LEFT, padx=20)
@@ -29,9 +30,11 @@ class MainDashboard:
         btn_header_frame.pack(side=tk.RIGHT, padx=20)
         tk.Button(btn_header_frame, text="Logout", bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), cursor="hand2", command=self.logout).pack(side=tk.LEFT, padx=5)
 
+        # --- Main Content Area ---
         content_frame = tk.Frame(self.root, bg="#ecf0f1")
         content_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
+        # --- Left Menu ---
         menu_frame = tk.Frame(content_frame, bg="#ecf0f1")
         menu_frame.pack(side=tk.LEFT, fill="y", padx=(0, 20))
 
@@ -44,9 +47,11 @@ class MainDashboard:
             self.create_menu_button(menu_frame, "📦 Inventory View", self.open_inventory)
             self.create_menu_button(menu_frame, "👥 Manage Users", self.open_users)
 
+        # --- Right Area (Split Layout) ---
         right_frame = tk.Frame(content_frame, bg="#ecf0f1")
         right_frame.pack(side=tk.LEFT, fill="both", expand=True)
 
+        # Top Right: Low Stock Alerts
         alert_frame = tk.LabelFrame(right_frame, text="⚠️ Low Stock Alerts", font=("Arial", 14, "bold"), bg="#ecf0f1", fg="#c0392b")
         alert_frame.pack(side=tk.TOP, fill="both", expand=True, pady=(0, 10))
 
@@ -59,6 +64,10 @@ class MainDashboard:
         self.alert_tree.column("Threshold", width=100, anchor="center")
         self.alert_tree.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # Configure the red color tag for low stock alerts
+        self.alert_tree.tag_configure('low_stock_danger', foreground='red')
+
+        # Bottom Right: Notice Board
         notice_frame = tk.LabelFrame(right_frame, text="📢 Lab Notice Board", font=("Arial", 14, "bold"), bg="#ecf0f1", fg="#2980b9")
         notice_frame.pack(side=tk.BOTTOM, fill="x")
 
@@ -75,6 +84,7 @@ class MainDashboard:
         self.notice_tree.column("Time", width=150, anchor="center")
         self.notice_tree.pack(fill="x", padx=10, pady=(0, 10))
 
+        # --- Status Bar ---
         self.status_var = tk.StringVar(value="System Active")
         status_bar = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#dfe6e9", font=("Arial", 8))
         status_bar.pack(side=tk.BOTTOM, fill="x")
@@ -83,7 +93,7 @@ class MainDashboard:
         self.refresh_all_data()
 
     def refresh_all_data(self):
-        """Called whenever an action happens in ANY window."""
+        """Called whenever an action happens in ANY window to keep data live."""
         self.load_alerts()
         self.load_dashboard_notes()
         now = datetime.datetime.now().strftime("%H:%M:%S")
@@ -106,8 +116,16 @@ class MainDashboard:
                 """
                 cursor = conn.execute(query)
                 for row in cursor:
-                    self.alert_tree.insert("", "end", values=row)
-        except Exception: pass
+                    current_qty = row[2]
+                    min_thresh = row[3]
+                    
+                    # If stock is equal to or below threshold, make it RED
+                    if current_qty <= min_thresh:
+                        self.alert_tree.insert("", "end", values=row, tags=('low_stock_danger',))
+                    else:
+                        self.alert_tree.insert("", "end", values=row)
+        except Exception as e: 
+            print(f"Error loading alerts: {e}")
 
     def load_dashboard_notes(self):
         for i in self.notice_tree.get_children(): self.notice_tree.delete(i)
@@ -117,7 +135,8 @@ class MainDashboard:
                 cursor = conn.execute(query)
                 for row in cursor:
                     self.notice_tree.insert("", "end", values=row)
-        except Exception: pass
+        except Exception as e: 
+            print(f"Error loading notes: {e}")
 
     def logout(self):
         if messagebox.askyesno("Logout", "Are you sure you want to log out?"):
@@ -127,7 +146,7 @@ class MainDashboard:
             LoginScreen(login_root)
             login_root.mainloop()
 
-    # --- UPDATED NAVIGATION (Passes self.refresh_all_data) ---
+    # --- Navigation Helpers (Passing the update callback) ---
     def open_catalog(self):
         from catalog_management import CatalogScreen
         CatalogScreen(tk.Toplevel(self.root), self.role, on_update=self.refresh_all_data)
