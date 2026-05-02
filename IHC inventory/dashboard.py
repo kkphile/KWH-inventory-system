@@ -21,6 +21,9 @@ class MainDashboard:
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
         self.root.configure(bg="#ecf0f1")
 
+        # --- Window Tracker ---
+        self.open_windows = {}
+
         # --- Top Header ---
         header_frame = tk.Frame(self.root, bg="#2C3E50", pady=15)
         header_frame.pack(fill="x")
@@ -89,8 +92,8 @@ class MainDashboard:
         status_bar = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#dfe6e9", font=("Arial", 8))
         status_bar.pack(side=tk.BOTTOM, fill="x")
 
-        # Initial Load
-        self.refresh_all_data()
+        # Initial Load & Background Timer
+        self.run_background_sync()
 
     def refresh_all_data(self):
         """Called whenever an action happens in ANY window to keep data live."""
@@ -98,6 +101,11 @@ class MainDashboard:
         self.load_dashboard_notes()
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.status_var.set(f"Last Live Update: {now}")
+
+    def run_background_sync(self):
+        """Silently syncs the dashboard with the database every 10 seconds."""
+        self.refresh_all_data()
+        self.root.after(10000, self.run_background_sync)
 
     def create_menu_button(self, parent, text, command):
         tk.Button(parent, text=text, font=("Arial", 14), width=20, pady=10, bg="#34495e", fg="white", cursor="hand2", command=command).pack(pady=5)
@@ -119,7 +127,6 @@ class MainDashboard:
                     current_qty = row[2]
                     min_thresh = row[3]
                     
-                    # If stock is equal to or below threshold, make it RED
                     if current_qty <= min_thresh:
                         self.alert_tree.insert("", "end", values=row, tags=('low_stock_danger',))
                     else:
@@ -146,32 +153,61 @@ class MainDashboard:
             LoginScreen(login_root)
             login_root.mainloop()
 
-    # --- Navigation Helpers (Passing the update callback) ---
+    # --- STRICT FIX: Mutually Exclusive Window Management ---
+    def open_single_window(self, window_name, window_class, *args, **kwargs):
+        """Ensures absolutely no other window is open before launching a new one."""
+        
+        # 1. If the exact window they clicked is already open, just pull it to the front
+        if window_name in self.open_windows and self.open_windows[window_name].winfo_exists():
+            self.open_windows[window_name].lift()
+            self.open_windows[window_name].focus_force()
+            return
+
+        # 2. Check if ANY OTHER window is currently open
+        for active_name, active_window in self.open_windows.items():
+            if active_window.winfo_exists():
+                # Display a warning and tell them which window needs closing
+                formatted_name = active_name.replace("_", " ").title()
+                messagebox.showwarning(
+                    "Action Blocked", 
+                    f"You already have the '{formatted_name}' module open.\n\nPlease close it before opening a new page.", 
+                    parent=self.root
+                )
+                # Pull that blocking window to the front so they see it
+                active_window.lift()
+                active_window.focus_force()
+                return
+
+        # 3. If everything is safely closed, create the new window
+        new_window = tk.Toplevel(self.root)
+        self.open_windows[window_name] = new_window
+        window_class(new_window, *args, **kwargs)
+
+    # --- Navigation Helpers ---
     def open_catalog(self):
         from catalog_management import CatalogScreen
-        CatalogScreen(tk.Toplevel(self.root), self.role, on_update=self.refresh_all_data)
+        self.open_single_window("Product Catalog", CatalogScreen, self.role, on_update=self.refresh_all_data)
 
     def open_inventory(self):
         from inventory_management import InventoryScreen
-        # Added self.user_id right after self.role
-        InventoryScreen(tk.Toplevel(self.root), self.role, self.user_id, on_update=self.refresh_all_data)
+        self.open_single_window("Inventory Management", InventoryScreen, self.role, self.user_id, on_update=self.refresh_all_data)
 
     def open_in_stock(self):
         from batch_in_stock import BatchInStockScreen
-        BatchInStockScreen(tk.Toplevel(self.root), self.user_id, on_update=self.refresh_all_data)
+        self.open_single_window("Batch In-Stock", BatchInStockScreen, self.user_id, on_update=self.refresh_all_data)
 
     def open_out_stock(self):
         from out_stock import OutStockScreen
-        OutStockScreen(tk.Toplevel(self.root), self.user_id, on_update=self.refresh_all_data)
+        self.open_single_window("Scan Out-Stock", OutStockScreen, self.user_id, on_update=self.refresh_all_data)
 
     def open_notes(self):
         from manage_notes import ManageNotesScreen
-        ManageNotesScreen(tk.Toplevel(self.root), self.username, self.role, on_update=self.refresh_all_data)
+        self.open_single_window("Notice Board", ManageNotesScreen, self.username, self.role, on_update=self.refresh_all_data)
 
     def open_audit(self):
         from audit_log import AuditLogScreen
-        AuditLogScreen(tk.Toplevel(self.root))
+        self.open_single_window("Audit Logs", AuditLogScreen)
 
     def open_users(self):
         from user_management import UserManagementScreen
-        UserManagementScreen(tk.Toplevel(self.root))
+        self.open_single_window("Manage Users", UserManagementScreen)
