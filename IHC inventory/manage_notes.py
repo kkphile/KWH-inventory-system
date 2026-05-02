@@ -3,10 +3,12 @@ from tkinter import ttk, messagebox
 import sqlite3
 
 class ManageNotesScreen:
-    def __init__(self, root, current_user, user_role):
+    # 1. ADDED on_update to receive the signal
+    def __init__(self, root, current_user, user_role, on_update=None):
         self.root = root
         self.current_user = current_user
         self.user_role = user_role
+        self.on_update = on_update # Save the callback
         self.root.title("KWH Inventory System - Manage Notes")
         
         window_width = 750
@@ -53,7 +55,6 @@ class ManageNotesScreen:
         self.ent_message.delete(0, tk.END) 
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                # STRICT FORMATTING APPLIED HERE
                 query = "SELECT note_id, username, content, strftime('%Y-%m-%d %H:%M:%S', timestamp, 'localtime') FROM Notes ORDER BY timestamp DESC"
                 cursor = conn.execute(query)
                 for row in cursor:
@@ -90,6 +91,10 @@ class ManageNotesScreen:
                     with sqlite3.connect("KWH_Inventory_System.db") as conn:
                         conn.execute("UPDATE Notes SET content = ? WHERE note_id = ?", (new_content, note_id))
                     self.load_notes()
+                    
+                    # 2. TRIGGER DASHBOARD REFRESH
+                    if self.on_update: self.on_update()
+                    
                     messagebox.showinfo("Success", "Notice board updated!", parent=self.root)
                 except sqlite3.Error as e:
                     messagebox.showerror("Error", f"Update failed: {e}", parent=self.root)
@@ -110,6 +115,10 @@ class ManageNotesScreen:
                     with sqlite3.connect("KWH_Inventory_System.db") as conn:
                         conn.execute("DELETE FROM Notes WHERE note_id = ?", (note_id,))
                     self.load_notes()
+                    
+                    # 3. TRIGGER DASHBOARD REFRESH
+                    if self.on_update: self.on_update()
+                    
                 except sqlite3.Error as e:
                     messagebox.showerror("Error", f"Delete failed: {e}", parent=self.root)
 

@@ -3,9 +3,11 @@ from tkinter import ttk, messagebox
 import sqlite3
 
 class CatalogScreen:
-    def __init__(self, root, role):
+    # 1. ADDED on_update to receive the signal
+    def __init__(self, root, role, on_update=None):
         self.root = root
         self.role = role
+        self.on_update = on_update # Save the callback
         self.root.title("KWH Inventory System - Catalog Management")
         
         window_width = 850
@@ -16,14 +18,11 @@ class CatalogScreen:
         center_y = int(screen_height / 2 - window_height / 2)
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
 
-        # --- NEW: Sorting Tracking ---
-        # 0 = Normal, 1 = Ascending, 2 = Descending
         self.sort_states = {
             "ID": 0, "Name": 0, "Category": 0, "Stock": 0, "Threshold": 0
         }
-        self.original_view_data = [] # Saves the current view for the "Normal" reset
+        self.original_view_data = [] 
         
-        # We map internal column names to their display text
         self.header_names = {
             "ID": "ID", "Name": "Product Name", "Category": "Category",
             "Stock": "Current Stock", "Threshold": "Alert Threshold"
@@ -53,14 +52,12 @@ class CatalogScreen:
 
         self.tree = ttk.Treeview(list_frame, columns=("ID", "Name", "Category", "Stock", "Threshold"), show='headings')
         
-        # --- NEW: Bind Clickable Headers for Sorting ---
         for col in self.tree["columns"]:
             self.tree.heading(col, text=self.header_names[col], command=lambda c=col: self.cycle_sort(c))
         
         self.tree.column("Stock", width=100, anchor="center")
         self.tree.column("Threshold", width=120, anchor="center")
         
-        # ROLE-BASED DISPLAY LOGIC
         if self.role == 'admin':
             self.tree["displaycolumns"] = ("Name", "Category", "Stock", "Threshold")
         else:
@@ -133,7 +130,7 @@ class CatalogScreen:
 
     def load_data(self):
         for i in self.tree.get_children(): self.tree.delete(i)
-        self.original_view_data = [] # Reset saved data
+        self.original_view_data = [] 
         
         filter_cat = self.filter_cat_var.get()
         filter_prod = self.filter_prod_var.get()
@@ -161,9 +158,8 @@ class CatalogScreen:
                 cursor = conn.execute(query, params)
                 for row in cursor: 
                     self.tree.insert("", "end", values=row)
-                    self.original_view_data.append(row) # Save for the 'Normal' sort state
+                    self.original_view_data.append(row) 
                     
-            # Reset headers back to Normal whenever new data is loaded
             for c in self.sort_states:
                 self.sort_states[c] = 0
                 self.tree.heading(c, text=self.header_names[c])
@@ -171,12 +167,10 @@ class CatalogScreen:
         except Exception as e: 
             messagebox.showerror("Error", f"Could not load catalog: {e}", parent=self.root)
 
-    # --- NEW: 3-Click Sorting Magic ---
     def cycle_sort(self, col):
         current_state = self.sort_states.get(col, 0)
         next_state = (current_state + 1) % 3
         
-        # Reset all other columns to normal
         for c in self.sort_states:
             self.sort_states[c] = 0
             self.tree.heading(c, text=self.header_names.get(c, c))
@@ -185,41 +179,33 @@ class CatalogScreen:
         base_text = self.header_names.get(col, col)
         
         if next_state == 0:
-            # Normal State: Re-render original data
             self.tree.heading(col, text=base_text)
             for i in self.tree.get_children(): self.tree.delete(i)
             for row in self.original_view_data:
                 self.tree.insert("", "end", values=row)
                 
         elif next_state == 1:
-            # Ascending State
             self.tree.heading(col, text=f"{base_text} ▲")
             self.sort_tree_data(col, reverse=False)
             
         elif next_state == 2:
-            # Descending State
             self.tree.heading(col, text=f"{base_text} ▼")
             self.sort_tree_data(col, reverse=True)
 
     def sort_tree_data(self, col, reverse):
-        # Extract row data based on clicked column
         l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
         
-        # SMART SORT: Detects if the column is full of numbers (like Stock levels)
         def convert_to_number_if_possible(val):
             try:
                 return float(val)
             except ValueError:
                 return str(val).lower()
                 
-        # Sort mathematically if numbers, alphabetically if text
         l.sort(key=lambda t: convert_to_number_if_possible(t[0]), reverse=reverse)
         
-        # Rearrange the visual list based on the new sort
         for index, (val, k) in enumerate(l):
             self.tree.move(k, '', index)
 
-    # --- Management Functions ---
     def select_item(self, event):
         if self.role != 'admin': return
         
@@ -252,6 +238,10 @@ class CatalogScreen:
             self.load_filters()
             self.load_data()
             self.clear_form(keep_category=True)
+            
+            # 2. TRIGGER DASHBOARD REFRESH
+            if self.on_update: self.on_update()
+            
             self.ent_name.focus()
             messagebox.showinfo("Success", f"Product '{name}' added.", parent=self.root)
         except sqlite3.IntegrityError:
@@ -279,6 +269,10 @@ class CatalogScreen:
                 self.load_filters()
                 self.load_data()
                 self.clear_form(keep_category=False)
+                
+                # 3. TRIGGER DASHBOARD REFRESH
+                if self.on_update: self.on_update()
+                
                 messagebox.showinfo("Success", "Catalog entry updated.", parent=self.root)
             except Exception as e: 
                 messagebox.showerror("Update Failed", str(e), parent=self.root)
@@ -298,5 +292,9 @@ class CatalogScreen:
                 self.load_filters()
                 self.load_data()
                 self.clear_form(keep_category=False)
+                
+                # 4. TRIGGER DASHBOARD REFRESH
+                if self.on_update: self.on_update()
+                
             except Exception as e: 
                 messagebox.showerror("Deletion Error", "Cannot delete product if items are in stock.", parent=self.root)

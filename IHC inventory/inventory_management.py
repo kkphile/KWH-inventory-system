@@ -4,18 +4,20 @@ import sqlite3
 import datetime
 
 class InventoryScreen:
-    def __init__(self, root, role):
+    # 1. Added on_update=None to the parameters
+    def __init__(self, root, role, on_update=None):
         self.root = root
         self.role = role
+        self.on_update = on_update # 2. Save the callback
+        
         self.root.title("KWH Inventory System - Inventory Management")
         self.root.geometry("1100x650")
 
-        # --- NEW: Sorting Tracking ---
-        # 0 = Normal, 1 = Ascending, 2 = Descending
+        # --- Sorting Tracking ---
         self.sort_states = {
             "Barcode": 0, "Product": 0, "Lot": 0, "Expiry": 0, "Status": 0
         }
-        self.original_view_data = [] # Saves the current filtered view for the "Normal" reset
+        self.original_view_data = [] 
 
         # --- Filter Section ---
         filter_frame = tk.Frame(self.root, pady=10, padx=20)
@@ -46,7 +48,6 @@ class InventoryScreen:
 
         self.tree = ttk.Treeview(list_frame, columns=("ID", "Barcode", "Product", "Lot", "Expiry", "Status"), show='headings')
         
-        # --- NEW: Bind Clickable Headers for Sorting ---
         for col in self.tree["columns"][1:]: 
             self.tree.heading(col, text=col, command=lambda c=col: self.cycle_sort(c))
         
@@ -115,7 +116,7 @@ class InventoryScreen:
 
     def load_data(self):
         for i in self.tree.get_children(): self.tree.delete(i)
-        self.original_view_data = [] # Reset saved data
+        self.original_view_data = [] 
         
         filter_cat = self.filter_cat_var.get()
         filter_prod = self.filter_prod_var.get()
@@ -145,9 +146,8 @@ class InventoryScreen:
                 
                 for row in conn.execute(query, params): 
                     self.tree.insert("", "end", values=row)
-                    self.original_view_data.append(row) # Save for the 'Normal' sort state
+                    self.original_view_data.append(row) 
                     
-            # Reset headers back to Normal whenever we load new filtered data
             for c in self.sort_states:
                 self.sort_states[c] = 0
                 self.tree.heading(c, text=c)
@@ -155,12 +155,10 @@ class InventoryScreen:
         except Exception as e: 
             messagebox.showerror("Error", str(e), parent=self.root)
 
-    # --- NEW: 3-Click Sorting Magic ---
     def cycle_sort(self, col):
         current_state = self.sort_states[col]
         next_state = (current_state + 1) % 3
         
-        # Reset all other columns to normal
         for c in self.sort_states:
             self.sort_states[c] = 0
             self.tree.heading(c, text=c)
@@ -168,34 +166,25 @@ class InventoryScreen:
         self.sort_states[col] = next_state
         
         if next_state == 0:
-            # Normal State: Re-render original filtered data
             self.tree.heading(col, text=col)
             for i in self.tree.get_children(): self.tree.delete(i)
             for row in self.original_view_data:
                 self.tree.insert("", "end", values=row)
                 
         elif next_state == 1:
-            # Ascending State
             self.tree.heading(col, text=f"{col} ▲")
             self.sort_tree_data(col, reverse=False)
             
         elif next_state == 2:
-            # Descending State
             self.tree.heading(col, text=f"{col} ▼")
             self.sort_tree_data(col, reverse=True)
 
     def sort_tree_data(self, col, reverse):
-        # Extract row data based on clicked column
         l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
-        
-        # Sort alphabetically / mathematically
         l.sort(reverse=reverse)
-        
-        # Rearrange the visual list based on the new sort
         for index, (val, k) in enumerate(l):
             self.tree.move(k, '', index)
 
-    # --- Management Functions ---
     def select_item(self, event):
         if self.role != 'admin': return
         sel = self.tree.selection()
@@ -257,6 +246,9 @@ class InventoryScreen:
                 self.ent_exp.delete(0, tk.END)
                 self.combo_status.set('')
                 
+                # 3. TRIGGER INSTANT UPDATE 
+                if self.on_update: self.on_update()
+                
                 messagebox.showinfo("Updated", "Item successfully updated.", parent=self.root)
             except Exception as e: 
                 messagebox.showerror("Error", str(e), parent=self.root)
@@ -275,5 +267,9 @@ class InventoryScreen:
                 self.ent_lot.delete(0, tk.END)
                 self.ent_exp.delete(0, tk.END)
                 self.combo_status.set('')
+                
+                # 4. TRIGGER INSTANT UPDATE
+                if self.on_update: self.on_update()
+                
             except Exception as e: 
                 messagebox.showerror("Error", str(e), parent=self.root)
