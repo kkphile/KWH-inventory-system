@@ -153,7 +153,8 @@ class MainDashboard:
 
     def open_inventory(self):
         from inventory_management import InventoryScreen
-        InventoryScreen(tk.Toplevel(self.root), self.role, on_update=self.refresh_all_data)
+        # Added self.user_id right after self.role
+        InventoryScreen(tk.Toplevel(self.root), self.role, self.user_id, on_update=self.refresh_all_data)
 
     def open_in_stock(self):
         from batch_in_stock import BatchInStockScreen

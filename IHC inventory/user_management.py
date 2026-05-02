@@ -16,6 +16,9 @@ class UserManagementScreen:
         center_y = int(screen_height / 2 - window_height / 2)
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
 
+        # --- Auto-Migration: Safely adds 'is_active' to your database if it doesn't exist ---
+        self.ensure_is_active_column()
+
         list_frame = tk.LabelFrame(self.root, text="System Users", padx=10, pady=10)
         list_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -58,11 +61,30 @@ class UserManagementScreen:
         self.selected_user_id = None
         self.load_users()
 
+    def ensure_is_active_column(self):
+        """Automatically checks the database and adds the is_active column safely."""
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA table_info(Users)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if 'is_active' not in columns:
+                    conn.execute("ALTER TABLE Users ADD COLUMN is_active INTEGER DEFAULT 1")
+        except Exception as e:
+            print(f"Migration error: {e}")
+
+    def clear_form(self):
+        self.ent_username.delete(0, tk.END)
+        self.ent_password.delete(0, tk.END)
+        self.role_var.set("normal")
+        self.selected_user_id = None
+
     def load_users(self):
         for i in self.tree.get_children(): self.tree.delete(i)
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                cursor = conn.execute("SELECT user_id, username, role FROM Users ORDER BY username ASC")
+                # Only load users that are active (is_active = 1)
+                cursor = conn.execute("SELECT user_id, username, role FROM Users WHERE is_active = 1 ORDER BY username ASC")
                 for row in cursor:
                     self.tree.insert("", "end", values=row)
         except sqlite3.Error as e: 
@@ -88,14 +110,33 @@ class UserManagementScreen:
         if not uname or not pw:
             messagebox.showwarning("Error", "Username and Password required for new users.", parent=self.root)
             return
+
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                conn.execute("INSERT INTO Users (username, password_hash, role) VALUES (?, ?, ?)", 
-                             (uname, self.hash_pw(pw), role))
+                # Check if user previously existed before trying to insert
+                cursor = conn.execute("SELECT user_id, is_active FROM Users WHERE username=?", (uname,))
+                existing_user = cursor.fetchone()
+
+                if existing_user:
+                    if existing_user[1] == 1:
+                        messagebox.showerror("Error", "Username already exists.", parent=self.root)
+                        return
+                    else:
+                        # Resurrect a soft-deleted user instead of creating a duplicate row
+                        conn.execute("UPDATE Users SET password_hash=?, role=?, is_active=1 WHERE user_id=?", 
+                                     (self.hash_pw(pw), role, existing_user[0]))
+                        messagebox.showinfo("Success", f"Previously deleted user '{uname}' has been restored and updated.", parent=self.root)
+                else:
+                    # Insert a brand new user
+                    conn.execute("INSERT INTO Users (username, password_hash, role, is_active) VALUES (?, ?, ?, 1)", 
+                                 (uname, self.hash_pw(pw), role))
+                    messagebox.showinfo("Success", f"User '{uname}' added.", parent=self.root)
+            
             self.load_users()
-            messagebox.showinfo("Success", f"User '{uname}' added.", parent=self.root)
-        except sqlite3.IntegrityError:
-            messagebox.showerror("Error", "Username already exists.", parent=self.root)
+            self.clear_form()
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Error", f"Database error: {e}", parent=self.root)
 
     def update_user(self):
         if not self.selected_user_id: return
@@ -112,16 +153,27 @@ class UserManagementScreen:
                     conn.execute("UPDATE Users SET username = ?, role = ? WHERE user_id = ?", 
                                  (uname, role, self.selected_user_id))
             self.load_users()
+            self.clear_form()
             messagebox.showinfo("Success", "User updated.", parent=self.root)
         except sqlite3.Error as e:
             messagebox.showerror("Error", f"Update failed: {e}", parent=self.root)
 
     def delete_user(self):
         if not self.selected_user_id: return
+        
+        # Prevent deleting the main admin account 
+        if self.ent_username.get().strip() == 'admin':
+            messagebox.showwarning("Warning", "Cannot delete the default 'admin' account.", parent=self.root)
+            return
+
         if messagebox.askyesno("Confirm", "Delete this user?", parent=self.root):
             try:
                 with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                    conn.execute("DELETE FROM Users WHERE user_id = ?", (self.selected_user_id,))
+                    # --- THE FIX: Soft Delete updates is_active to 0 instead of DROP ---
+                    conn.execute("UPDATE Users SET is_active = 0 WHERE user_id = ?", (self.selected_user_id,))
+                
                 self.load_users()
+                self.clear_form()
+                messagebox.showinfo("Success", "User deleted successfully.", parent=self.root)
             except sqlite3.Error as e:
                 messagebox.showerror("Error", f"Delete failed: {e}", parent=self.root)

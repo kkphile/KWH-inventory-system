@@ -33,6 +33,7 @@
     <Compile Include="audit_log.py" />
     <Compile Include="manage_notes.py" />
     <Compile Include="login_screen.py" />
+    <Compile Include="import_data%28TEMP%29.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

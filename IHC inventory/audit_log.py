@@ -7,7 +7,7 @@ class AuditLogScreen:
     def __init__(self, root):
         self.root = root
         self.root.title("KWH Inventory System - Audit Logs")
-        self.root.geometry("1100x650") # Expanded for the 2-row control panel
+        self.root.geometry("1100x650") 
 
         # --- Clean 2-Row Filter Panel ---
         filter_frame = tk.LabelFrame(self.root, text="Search & Filter", padx=10, pady=10)
@@ -94,27 +94,23 @@ class AuditLogScreen:
         self.load_logs()
 
     def load_dropdowns(self):
-        core_actions = ["In_Stock", "Consumed", "Discarded", "Manual Edit"]
+        core_actions = ["In_Stock", "Consumed", "Discarded", "Manual Edit", "Deleted"]
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                # Actions
                 c_act = conn.execute("SELECT DISTINCT action FROM AuditLog WHERE action IS NOT NULL ORDER BY action ASC")
                 db_actions = [row[0] for row in c_act]
                 for act in db_actions:
                     if act not in core_actions: core_actions.append(act)
                 
-                # Categories & Products
                 c_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
                 c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
                 
                 self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c_cat]
                 self.combo_filter_prod['values'] = ["All Products"] + [row[0] for row in c_prod]
-
         except Exception:
             pass 
             
         self.combo_filter_act['values'] = ["All Actions"] + core_actions
-        
         self.combo_filter_act.set("All Actions")
         self.combo_filter_cat.set("All Categories")
         self.combo_filter_prod.set("All Products")
@@ -139,8 +135,9 @@ class AuditLogScreen:
 
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                # FIX: Removed the double-shifting 'localtime' bug. It now reads raw exact strings.
                 query = """
-                    SELECT a.log_id, a.barcode, COALESCE(c.product_name, 'Unknown/Deleted'), u.username, a.action, strftime('%Y-%m-%d %H:%M:%S', a.timestamp, 'localtime')
+                    SELECT a.log_id, a.barcode, COALESCE(c.product_name, 'Unknown/Deleted'), u.username, a.action, a.timestamp
                     FROM AuditLog a
                     LEFT JOIN Users u ON a.user_id = u.user_id
                     LEFT JOIN Inventory i ON a.item_id = i.item_id
@@ -152,25 +149,20 @@ class AuditLogScreen:
                 if f_act and f_act != "All Actions":
                     query += " AND a.action = ?"
                     params.append(f_act)
-
                 if f_cat and f_cat != "All Categories":
                     query += " AND c.category = ?"
                     params.append(f_cat)
-
                 if f_prod and f_prod != "All Products":
                     query += " AND c.product_name = ?"
                     params.append(f_prod)
-
                 if f_search:
                     query += " AND LOWER(a.barcode) LIKE ?"
                     params.append(f"%{f_search}%")
-
                 if start_date:
-                    query += " AND date(a.timestamp, 'localtime') >= ?"
+                    query += " AND date(a.timestamp) >= ?"
                     params.append(start_date)
-
                 if end_date:
-                    query += " AND date(a.timestamp, 'localtime') <= ?"
+                    query += " AND date(a.timestamp) <= ?"
                     params.append(end_date)
 
                 query += " ORDER BY a.timestamp DESC"

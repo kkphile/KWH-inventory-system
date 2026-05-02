@@ -8,7 +8,7 @@ class BatchInStockScreen:
         self.root = root
         self.user_id = user_id
         self.on_update = on_update # <--- Callback
-        self.root.title("KWH Inventory System - Receive Stock")
+        self.root.title("KWH Inventory System - Stock In")
         self.root.geometry("500x500")
 
         frame = tk.LabelFrame(self.root, text="Rapid Scan In-Stock", padx=20, pady=20)

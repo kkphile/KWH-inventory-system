@@ -4,19 +4,17 @@ import sqlite3
 import datetime
 
 class InventoryScreen:
-    # 1. Added on_update=None to the parameters
-    def __init__(self, root, role, on_update=None):
+    # Safety feature: defaults user_id to None if dashboard doesn't provide it
+    def __init__(self, root, role, user_id=None, on_update=None):
         self.root = root
         self.role = role
-        self.on_update = on_update # 2. Save the callback
+        self.user_id = user_id if user_id else 1 # Fallback to admin if dashboard pass failed
+        self.on_update = on_update
         
         self.root.title("KWH Inventory System - Inventory Management")
         self.root.geometry("1100x650")
 
-        # --- Sorting Tracking ---
-        self.sort_states = {
-            "Barcode": 0, "Product": 0, "Lot": 0, "Expiry": 0, "Status": 0
-        }
+        self.sort_states = {"Barcode": 0, "Product": 0, "Lot": 0, "Expiry": 0, "Status": 0}
         self.original_view_data = [] 
 
         # --- Filter Section ---
@@ -47,7 +45,6 @@ class InventoryScreen:
         list_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
         self.tree = ttk.Treeview(list_frame, columns=("ID", "Barcode", "Product", "Lot", "Expiry", "Status"), show='headings')
-        
         for col in self.tree["columns"][1:]: 
             self.tree.heading(col, text=col, command=lambda c=col: self.cycle_sort(c))
         
@@ -91,8 +88,7 @@ class InventoryScreen:
         try:
             datetime.datetime.strptime(date_text, '%Y-%m-%d')
             return True
-        except ValueError:
-            return False
+        except ValueError: return False
 
     def load_filters(self):
         try:
@@ -105,8 +101,7 @@ class InventoryScreen:
                 
                 self.combo_filter_cat.set("All Categories")
                 self.combo_filter_prod.set("All Products")
-        except Exception:
-            pass
+        except Exception: pass
 
     def clear_filters(self):
         self.combo_filter_cat.set("All Categories")
@@ -118,9 +113,9 @@ class InventoryScreen:
         for i in self.tree.get_children(): self.tree.delete(i)
         self.original_view_data = [] 
         
-        filter_cat = self.filter_cat_var.get()
-        filter_prod = self.filter_prod_var.get()
-        search_text = self.ent_search.get().strip().lower()
+        f_cat = self.filter_cat_var.get()
+        f_prod = self.filter_prod_var.get()
+        s_txt = self.ent_search.get().strip().lower()
 
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
@@ -130,17 +125,15 @@ class InventoryScreen:
                            WHERE 1=1"""
                 params = []
 
-                if filter_cat and filter_cat != "All Categories":
+                if f_cat and f_cat != "All Categories":
                     query += " AND c.category = ?"
-                    params.append(filter_cat)
-                    
-                if filter_prod and filter_prod != "All Products":
+                    params.append(f_cat)
+                if f_prod and f_prod != "All Products":
                     query += " AND c.product_name = ?"
-                    params.append(filter_prod)
-                
-                if search_text:
+                    params.append(f_prod)
+                if s_txt:
                     query += " AND LOWER(i.barcode) LIKE ?"
-                    params.append(f"%{search_text}%")
+                    params.append(f"%{s_txt}%")
 
                 query += " ORDER BY i.status DESC, i.expiry_date ASC"
                 
@@ -152,65 +145,55 @@ class InventoryScreen:
                 self.sort_states[c] = 0
                 self.tree.heading(c, text=c)
 
-        except Exception as e: 
-            messagebox.showerror("Error", str(e), parent=self.root)
+        except Exception as e: messagebox.showerror("Error", str(e), parent=self.root)
 
     def cycle_sort(self, col):
-        current_state = self.sort_states[col]
-        next_state = (current_state + 1) % 3
-        
+        curr = self.sort_states[col]
+        nxt = (curr + 1) % 3
         for c in self.sort_states:
             self.sort_states[c] = 0
             self.tree.heading(c, text=c)
             
-        self.sort_states[col] = next_state
-        
-        if next_state == 0:
+        self.sort_states[col] = nxt
+        if nxt == 0:
             self.tree.heading(col, text=col)
             for i in self.tree.get_children(): self.tree.delete(i)
-            for row in self.original_view_data:
-                self.tree.insert("", "end", values=row)
-                
-        elif next_state == 1:
+            for row in self.original_view_data: self.tree.insert("", "end", values=row)
+        elif nxt == 1:
             self.tree.heading(col, text=f"{col} ▲")
             self.sort_tree_data(col, reverse=False)
-            
-        elif next_state == 2:
+        elif nxt == 2:
             self.tree.heading(col, text=f"{col} ▼")
             self.sort_tree_data(col, reverse=True)
 
     def sort_tree_data(self, col, reverse):
         l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
         l.sort(reverse=reverse)
-        for index, (val, k) in enumerate(l):
-            self.tree.move(k, '', index)
+        for index, (val, k) in enumerate(l): self.tree.move(k, '', index)
 
     def select_item(self, event):
         if self.role != 'admin': return
         sel = self.tree.selection()
         if sel:
             row = self.tree.item(sel[0])['values']
-            
-            self.ent_barcode_edit.delete(0, tk.END)
-            self.ent_barcode_edit.insert(0, row[1])
-            
-            self.ent_lot.delete(0, tk.END)
-            self.ent_lot.insert(0, row[3])
-            
-            self.ent_exp.delete(0, tk.END)
-            self.ent_exp.insert(0, row[4])
-            
+            self.ent_barcode_edit.delete(0, tk.END); self.ent_barcode_edit.insert(0, row[1])
+            self.ent_lot.delete(0, tk.END); self.ent_lot.insert(0, row[3])
+            self.ent_exp.delete(0, tk.END); self.ent_exp.insert(0, row[4])
             self.combo_status.set(row[5])
 
     def update_item(self):
         sel = self.tree.selection()
         if not sel: return
+        
+        # Grab exactly what is currently in the table
         row_data = self.tree.item(sel[0])['values']
-        
         item_id = row_data[0]
-        old_barcode = row_data[1]
-        old_status = row_data[5]
+        old_barcode = str(row_data[1]).strip()
+        old_lot = str(row_data[3]).strip()
+        old_exp = str(row_data[4]).strip()
+        old_status = str(row_data[5]).strip()
         
+        # Grab exactly what the admin typed
         new_barcode = self.ent_barcode_edit.get().strip()
         new_lot = self.ent_lot.get().strip()
         new_exp = self.ent_exp.get().strip()
@@ -219,57 +202,65 @@ class InventoryScreen:
         if not new_barcode:
             messagebox.showwarning("Input Error", "Barcode cannot be empty.", parent=self.root)
             return
-
         if not self.validate_date(new_exp) or not new_status:
             messagebox.showwarning("Error", "Invalid Date or Status.", parent=self.root)
             return
             
-        audit_action = new_status if new_status != old_status else "Manual Edit"
+        # --- THE FIX: Smart Detection ---
+        status_changed = (new_status != old_status)
+        details_changed = (new_barcode != old_barcode) or (new_lot != old_lot) or (new_exp != old_exp)
         
-        warning_message = "Update this item's details?"
-        if old_barcode != new_barcode:
-            warning_message += "\n\nWARNING: You are changing the barcode. This will alter the item's identity in the database."
+        actions_to_log = []
+        if details_changed:
+            actions_to_log.append("Manual Edit")
+        if status_changed:
+            actions_to_log.append(new_status)
             
-        if messagebox.askyesno("Confirm Update", warning_message, parent=self.root):
+        # If they hit update but didn't change anything, just log a generic edit
+        if not actions_to_log:
+            actions_to_log.append("Manual Edit")
+            
+        warning_msg = "Update this item's details?"
+        if messagebox.askyesno("Confirm Update", warning_msg, parent=self.root):
             try:
+                timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
                 with sqlite3.connect("KWH_Inventory_System.db") as conn:
                     conn.execute("UPDATE Inventory SET barcode=?, lot_number=?, expiry_date=?, status=? WHERE item_id=?", 
                                  (new_barcode, new_lot, new_exp, new_status, item_id))
                     
-                    conn.execute("INSERT INTO AuditLog (item_id, barcode, action) VALUES (?, ?, ?)", 
-                                 (item_id, new_barcode, audit_action))
+                    # Instead of logging once, we loop through the actions list!
+                    # This guarantees both "Manual Edit" AND "Consumed" get safely logged.
+                    for action in actions_to_log:
+                        conn.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, ?, ?)", 
+                                     (item_id, new_barcode, self.user_id, action, timestamp_str))
                                  
                 self.load_data()
+                self.ent_barcode_edit.delete(0, tk.END); self.ent_lot.delete(0, tk.END)
+                self.ent_exp.delete(0, tk.END); self.combo_status.set('')
                 
-                self.ent_barcode_edit.delete(0, tk.END)
-                self.ent_lot.delete(0, tk.END)
-                self.ent_exp.delete(0, tk.END)
-                self.combo_status.set('')
-                
-                # 3. TRIGGER INSTANT UPDATE 
                 if self.on_update: self.on_update()
-                
                 messagebox.showinfo("Updated", "Item successfully updated.", parent=self.root)
-            except Exception as e: 
-                messagebox.showerror("Error", str(e), parent=self.root)
+            except Exception as e: messagebox.showerror("Error", str(e), parent=self.root)
 
     def delete_item(self):
         sel = self.tree.selection()
         if not sel: return
-        item_id = self.tree.item(sel[0])['values'][0]
+        row_data = self.tree.item(sel[0])['values']
+        item_id, barcode_val = row_data[0], row_data[1]
+
         if messagebox.askyesno("Confirm Delete", "Remove this item entirely?", icon='warning', parent=self.root):
             try:
+                timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
                 with sqlite3.connect("KWH_Inventory_System.db") as conn:
                     conn.execute("DELETE FROM Inventory WHERE item_id=?", (item_id,))
+                    conn.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'Deleted', ?)", 
+                                 (item_id, barcode_val, self.user_id, timestamp_str))
+                                 
                 self.load_data()
+                self.ent_barcode_edit.delete(0, tk.END); self.ent_lot.delete(0, tk.END)
+                self.ent_exp.delete(0, tk.END); self.combo_status.set('')
                 
-                self.ent_barcode_edit.delete(0, tk.END)
-                self.ent_lot.delete(0, tk.END)
-                self.ent_exp.delete(0, tk.END)
-                self.combo_status.set('')
-                
-                # 4. TRIGGER INSTANT UPDATE
                 if self.on_update: self.on_update()
-                
-            except Exception as e: 
-                messagebox.showerror("Error", str(e), parent=self.root)
+            except Exception as e: messagebox.showerror("Error", str(e), parent=self.root)
