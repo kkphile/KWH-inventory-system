@@ -21,8 +21,9 @@ class MainDashboard:
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
         self.root.configure(bg="#ecf0f1")
 
-        # --- Window Tracker ---
+        # --- Memory Trackers ---
         self.open_windows = {}
+        self.sync_id = None # Tracker for the background timer
 
         # --- Top Header ---
         header_frame = tk.Frame(self.root, bg="#2C3E50", pady=15)
@@ -66,46 +67,64 @@ class MainDashboard:
         self.alert_tree.column("Current Stock", width=100, anchor="center")
         self.alert_tree.column("Threshold", width=100, anchor="center")
         self.alert_tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Configure the red color tag for low stock alerts
         self.alert_tree.tag_configure('low_stock_danger', foreground='red')
 
-        # Bottom Right: Notice Board
+        # Bottom Right: Notice Board & Chat
         notice_frame = tk.LabelFrame(right_frame, text="📢 Lab Notice Board", font=("Arial", 14, "bold"), bg="#ecf0f1", fg="#2980b9")
         notice_frame.pack(side=tk.BOTTOM, fill="x")
 
         notice_btn_frame = tk.Frame(notice_frame, bg="#ecf0f1")
         notice_btn_frame.pack(fill="x", padx=10, pady=(5, 0))
-        tk.Button(notice_btn_frame, text="⚙️ Manage", font=("Arial", 9, "bold"), bg="#bdc3c7", fg="#2c3e50", cursor="hand2", command=self.open_notes).pack(side=tk.RIGHT)
+        tk.Button(notice_btn_frame, text="⚙️ Manage/Edit", font=("Arial", 9, "bold"), bg="#bdc3c7", fg="#2c3e50", cursor="hand2", command=self.open_notes).pack(side=tk.RIGHT)
 
-        self.notice_tree = ttk.Treeview(notice_frame, columns=("User", "Message", "Time"), show="headings", height=6)
+        self.notice_tree = ttk.Treeview(notice_frame, columns=("User", "Message", "Time"), show="headings", height=5)
         self.notice_tree.heading("User", text="Posted By")
         self.notice_tree.heading("Message", text="Announcement")
         self.notice_tree.heading("Time", text="Date & Time")
         self.notice_tree.column("User", width=120)
         self.notice_tree.column("Message", width=500)
         self.notice_tree.column("Time", width=150, anchor="center")
-        self.notice_tree.pack(fill="x", padx=10, pady=(0, 10))
+        self.notice_tree.pack(fill="x", padx=10, pady=(5, 5))
+
+        # Chat Typing Box
+        chat_frame = tk.Frame(notice_frame, bg="#ecf0f1")
+        chat_frame.pack(fill="x", padx=10, pady=(0, 10))
+        self.ent_chat = tk.Entry(chat_frame, font=("Arial", 11))
+        self.ent_chat.pack(side=tk.LEFT, fill="x", expand=True, padx=(0, 10))
+        self.ent_chat.bind("<Return>", lambda e: self.post_chat_message())
+        tk.Button(chat_frame, text="Post", bg="#3498db", fg="white", font=("Arial", 10, "bold"), cursor="hand2", width=8, command=self.post_chat_message).pack(side=tk.RIGHT)
 
         # --- Status Bar ---
         self.status_var = tk.StringVar(value="System Active")
         status_bar = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#dfe6e9", font=("Arial", 8))
         status_bar.pack(side=tk.BOTTOM, fill="x")
 
-        # Initial Load & Background Timer
+        # Initial Load & Start Background Sync
         self.run_background_sync()
 
     def refresh_all_data(self):
-        """Called whenever an action happens in ANY window to keep data live."""
         self.load_alerts()
         self.load_dashboard_notes()
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.status_var.set(f"Last Live Update: {now}")
 
     def run_background_sync(self):
-        """Silently syncs the dashboard with the database every 10 seconds."""
+        """Silently syncs the dashboard with the database and tracks its own timer ID."""
         self.refresh_all_data()
-        self.root.after(10000, self.run_background_sync)
+        # Save the timer ID so we can cancel it later
+        self.sync_id = self.root.after(10000, self.run_background_sync)
+
+    def logout(self):
+        if messagebox.askyesno("Logout", "Are you sure you want to log out?"):
+            # --- THE FIX: Cancel the zombie timer before destroying the window ---
+            if self.sync_id:
+                self.root.after_cancel(self.sync_id)
+            
+            self.root.destroy()
+            from login_screen import LoginScreen
+            login_root = tk.Tk()
+            LoginScreen(login_root)
+            login_root.mainloop()
 
     def create_menu_button(self, parent, text, command):
         tk.Button(parent, text=text, font=("Arial", 14), width=20, pady=10, bg="#34495e", fg="white", cursor="hand2", command=command).pack(pady=5)
@@ -124,15 +143,11 @@ class MainDashboard:
                 """
                 cursor = conn.execute(query)
                 for row in cursor:
-                    current_qty = row[2]
-                    min_thresh = row[3]
-                    
-                    if current_qty <= min_thresh:
+                    if row[2] <= row[3]:
                         self.alert_tree.insert("", "end", values=row, tags=('low_stock_danger',))
                     else:
                         self.alert_tree.insert("", "end", values=row)
-        except Exception as e: 
-            print(f"Error loading alerts: {e}")
+        except Exception as e: print(f"Alert error: {e}")
 
     def load_dashboard_notes(self):
         for i in self.notice_tree.get_children(): self.notice_tree.delete(i)
@@ -142,48 +157,33 @@ class MainDashboard:
                 cursor = conn.execute(query)
                 for row in cursor:
                     self.notice_tree.insert("", "end", values=row)
-        except Exception as e: 
-            print(f"Error loading notes: {e}")
+        except Exception as e: print(f"Note error: {e}")
 
-    def logout(self):
-        if messagebox.askyesno("Logout", "Are you sure you want to log out?"):
-            self.root.destroy()
-            from login_screen import LoginScreen
-            login_root = tk.Tk()
-            LoginScreen(login_root)
-            login_root.mainloop()
+    def post_chat_message(self):
+        msg = self.ent_chat.get().strip()
+        if not msg: return
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                conn.execute("INSERT INTO Notes (username, content) VALUES (?, ?)", (self.username, msg))
+            self.ent_chat.delete(0, tk.END)
+            self.refresh_all_data()
+        except Exception as e: messagebox.showerror("Error", f"Post failed: {e}")
 
-    # --- STRICT FIX: Mutually Exclusive Window Management ---
+    # --- Strict Window Management ---
     def open_single_window(self, window_name, window_class, *args, **kwargs):
-        """Ensures absolutely no other window is open before launching a new one."""
-        
-        # 1. If the exact window they clicked is already open, just pull it to the front
         if window_name in self.open_windows and self.open_windows[window_name].winfo_exists():
             self.open_windows[window_name].lift()
             self.open_windows[window_name].focus_force()
             return
+        for name, win in self.open_windows.items():
+            if win.winfo_exists():
+                messagebox.showwarning("Action Blocked", f"Close the '{name}' module first.", parent=self.root)
+                win.lift(); return
 
-        # 2. Check if ANY OTHER window is currently open
-        for active_name, active_window in self.open_windows.items():
-            if active_window.winfo_exists():
-                # Display a warning and tell them which window needs closing
-                formatted_name = active_name.replace("_", " ").title()
-                messagebox.showwarning(
-                    "Action Blocked", 
-                    f"You already have the '{formatted_name}' module open.\n\nPlease close it before opening a new page.", 
-                    parent=self.root
-                )
-                # Pull that blocking window to the front so they see it
-                active_window.lift()
-                active_window.focus_force()
-                return
+        new_win = tk.Toplevel(self.root)
+        self.open_windows[window_name] = new_win
+        window_class(new_win, *args, **kwargs)
 
-        # 3. If everything is safely closed, create the new window
-        new_window = tk.Toplevel(self.root)
-        self.open_windows[window_name] = new_window
-        window_class(new_window, *args, **kwargs)
-
-    # --- Navigation Helpers ---
     def open_catalog(self):
         from catalog_management import CatalogScreen
         self.open_single_window("Product Catalog", CatalogScreen, self.role, on_update=self.refresh_all_data)
