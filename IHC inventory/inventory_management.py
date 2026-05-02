@@ -187,7 +187,7 @@ class InventoryScreen:
         
         # Grab exactly what is currently in the table
         row_data = self.tree.item(sel[0])['values']
-        item_id = row_data[0]
+        item_id = int(row_data[0])
         old_barcode = str(row_data[1]).strip()
         old_lot = str(row_data[3]).strip()
         old_exp = str(row_data[4]).strip()
@@ -247,7 +247,10 @@ class InventoryScreen:
         sel = self.tree.selection()
         if not sel: return
         row_data = self.tree.item(sel[0])['values']
-        item_id, barcode_val = row_data[0], row_data[1]
+        
+        # --- THE FIX: We explicitly force the barcode into a string so SQLite doesn't choke on huge numbers ---
+        item_id = int(row_data[0])
+        barcode_val = str(row_data[1]).strip()
 
         if messagebox.askyesno("Confirm Delete", "Remove this item entirely?", icon='warning', parent=self.root):
             try:
@@ -259,8 +262,10 @@ class InventoryScreen:
                                  (item_id, barcode_val, self.user_id, timestamp_str))
                                  
                 self.load_data()
-                self.ent_barcode_edit.delete(0, tk.END); self.ent_lot.delete(0, tk.END)
-                self.ent_exp.delete(0, tk.END); self.combo_status.set('')
+                self.ent_barcode_edit.delete(0, tk.END)
+                self.ent_lot.delete(0, tk.END)
+                self.ent_exp.delete(0, tk.END)
+                self.combo_status.set('')
                 
                 if self.on_update: self.on_update()
             except Exception as e: messagebox.showerror("Error", str(e), parent=self.root)
