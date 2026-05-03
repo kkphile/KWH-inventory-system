@@ -4,11 +4,10 @@ import sqlite3
 import datetime
 
 class InventoryScreen:
-    # Safety feature: defaults user_id to None if dashboard doesn't provide it
     def __init__(self, root, role, user_id=None, on_update=None):
         self.root = root
         self.role = role
-        self.user_id = user_id if user_id else 1 # Fallback to admin if dashboard pass failed
+        self.user_id = user_id if user_id else 1
         self.on_update = on_update
         
         self.root.title("KWH Inventory System - Inventory Management")
@@ -17,21 +16,22 @@ class InventoryScreen:
         self.sort_states = {"Barcode": 0, "Product": 0, "Lot": 0, "Expiry": 0, "Status": 0}
         self.original_view_data = [] 
 
-        # --- Filter Section ---
         filter_frame = tk.Frame(self.root, pady=10, padx=20)
         filter_frame.pack(fill="x")
 
         tk.Label(filter_frame, text="Category:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.filter_cat_var = tk.StringVar()
-        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, state="readonly", width=15)
+        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=15)
         self.combo_filter_cat.pack(side=tk.LEFT, padx=(5, 10))
-        self.combo_filter_cat.bind("<<ComboboxSelected>>", lambda e: self.load_data())
+        self.combo_filter_cat.bind("<<ComboboxSelected>>", self.on_category_select)
+        self.combo_filter_cat.bind("<KeyRelease>", self.on_category_select)
 
         tk.Label(filter_frame, text="Product:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.filter_prod_var = tk.StringVar()
-        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, state="readonly", width=20)
+        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=20)
         self.combo_filter_prod.pack(side=tk.LEFT, padx=(5, 10))
-        self.combo_filter_prod.bind("<<ComboboxSelected>>", lambda e: self.load_data())
+        self.combo_filter_prod.bind("<<ComboboxSelected>>", self.on_product_type)
+        self.combo_filter_prod.bind("<KeyRelease>", self.on_product_type)
 
         tk.Label(filter_frame, text="Barcode Search:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.ent_search = tk.Entry(filter_frame, width=15)
@@ -40,7 +40,16 @@ class InventoryScreen:
 
         tk.Button(filter_frame, text="Clear Filters", bg="#95a5a6", fg="white", cursor="hand2", command=self.clear_filters).pack(side=tk.LEFT)
 
-        # --- Table Section ---
+        # --- THE FIX: Custom Floating Overlays (Immune to focus stealing) ---
+        self.cat_listbox = tk.Listbox(self.root, font=("Arial", 10), bg="#fdfdfe", selectbackground="#3498db", relief=tk.SOLID, bd=1)
+        self.prod_listbox = tk.Listbox(self.root, font=("Arial", 10), bg="#fdfdfe", selectbackground="#3498db", relief=tk.SOLID, bd=1)
+        
+        self.cat_listbox.bind("<ButtonRelease-1>", lambda e: self.apply_selection(self.combo_filter_cat, self.cat_listbox, self.on_category_select))
+        self.prod_listbox.bind("<ButtonRelease-1>", lambda e: self.apply_selection(self.combo_filter_prod, self.prod_listbox, self.on_product_type))
+        
+        self.combo_filter_cat.bind("<FocusOut>", lambda e: self.cat_listbox.after(150, self.cat_listbox.place_forget))
+        self.combo_filter_prod.bind("<FocusOut>", lambda e: self.prod_listbox.after(150, self.prod_listbox.place_forget))
+
         list_frame = tk.LabelFrame(self.root, text="Current Physical Stock & History", padx=10, pady=10)
         list_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -52,7 +61,6 @@ class InventoryScreen:
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<ButtonRelease-1>", self.select_item)
 
-        # --- Bottom Section: Management Form ---
         if self.role == 'admin':
             form_frame = tk.LabelFrame(self.root, text="Edit Specific Item", padx=10, pady=10)
             form_frame.pack(fill="x", padx=20, pady=15)
@@ -81,8 +89,7 @@ class InventoryScreen:
             tk.Button(btn_frame, text="Update Item", bg="#f39c12", fg="white", font=("Arial", 10, "bold"), command=self.update_item, width=15).pack(side=tk.LEFT, padx=10)
             tk.Button(btn_frame, text="Delete Item", bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), command=self.delete_item, width=15).pack(side=tk.LEFT, padx=10)
 
-        self.load_filters()
-        self.load_data()
+        self.clear_filters()
 
     def validate_date(self, date_text):
         try:
@@ -90,31 +97,112 @@ class InventoryScreen:
             return True
         except ValueError: return False
 
-    def load_filters(self):
+    # --- NEW: Floating Listbox Controllers ---
+    def apply_selection(self, combobox, listbox, callback):
+        if listbox.curselection():
+            combobox.set(listbox.get(listbox.curselection()))
+            listbox.place_forget()
+            callback()
+
+    def update_floating_listbox(self, combobox, listbox, var, event):
+        if not event or not hasattr(event, 'keysym'): return
+        
+        typed = var.get().strip()
+        vals = combobox['values']
+        
+        if typed and vals and not (len(vals) == 1 and vals[0].lower() == typed.lower()):
+            listbox.delete(0, tk.END)
+            for v in vals: listbox.insert(tk.END, v)
+            
+            x = combobox.winfo_rootx() - self.root.winfo_rootx()
+            y = combobox.winfo_rooty() - self.root.winfo_rooty() + combobox.winfo_height()
+            listbox.place(x=x, y=y, width=combobox.winfo_width(), height=min(120, len(vals)*20))
+            listbox.lift()
+        else:
+            listbox.place_forget()
+
+    def on_category_select(self, event=None):
+        if event and hasattr(event, 'keysym') and event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"):
+            return
+            
+        selected_cat = self.filter_cat_var.get().strip()
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                c_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
-                self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c_cat]
+                c_all_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
+                all_cats = [row[0] for row in c_all_cat]
                 
-                c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
+                new_cat_values = ["All Categories"] + all_cats
+                if selected_cat and selected_cat != "All Categories":
+                    new_cat_values = ["All Categories"] + [c for c in all_cats if selected_cat.lower() in c.lower()]
+                
+                self.combo_filter_cat['values'] = new_cat_values
+
+                if selected_cat == "All Categories" or not selected_cat:
+                    c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
+                else:
+                    c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog WHERE category LIKE ? ORDER BY product_name ASC", (f"%{selected_cat}%",))
+                
                 self.combo_filter_prod['values'] = ["All Products"] + [row[0] for row in c_prod]
                 
-                self.combo_filter_cat.set("All Categories")
-                self.combo_filter_prod.set("All Products")
-        except Exception: pass
+                if event and not hasattr(event, 'keysym'): 
+                    self.combo_filter_prod.set("All Products")
+        except Exception: 
+            pass
+            
+        self.load_data()
+        self.update_floating_listbox(self.combo_filter_cat, self.cat_listbox, self.filter_cat_var, event)
+
+    def on_product_type(self, event=None):
+        if event and hasattr(event, 'keysym') and event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"):
+            return
+            
+        selected_prod = self.filter_prod_var.get().strip()
+        selected_cat = self.filter_cat_var.get().strip()
+        
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                exact_match = conn.execute("SELECT category FROM Catalog WHERE product_name = ?", (selected_prod,)).fetchone()
+                
+                if exact_match:
+                    self.combo_filter_cat.set(exact_match[0])
+                    selected_cat = exact_match[0] 
+                    self.combo_filter_cat['values'] = ["All Categories", exact_match[0]]
+                else:
+                    c_all_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
+                    self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c_all_cat]
+
+                if selected_cat == "All Categories" or not selected_cat:
+                    c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
+                else:
+                    c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog WHERE category LIKE ? ORDER BY product_name ASC", (f"%{selected_cat}%",))
+                
+                valid_prods = [row[0] for row in c_prod]
+                new_prod_values = ["All Products"] + valid_prods
+                
+                if selected_prod and selected_prod != "All Products":
+                    new_prod_values = ["All Products"] + [p for p in valid_prods if selected_prod.lower() in p.lower()]
+                    
+                self.combo_filter_prod['values'] = new_prod_values
+        except Exception:
+            pass
+            
+        self.load_data()
+        self.update_floating_listbox(self.combo_filter_prod, self.prod_listbox, self.filter_prod_var, event)
 
     def clear_filters(self):
         self.combo_filter_cat.set("All Categories")
         self.combo_filter_prod.set("All Products")
         self.ent_search.delete(0, tk.END)
-        self.load_data()
+        self.cat_listbox.place_forget()
+        self.prod_listbox.place_forget()
+        self.on_category_select()
 
     def load_data(self):
         for i in self.tree.get_children(): self.tree.delete(i)
         self.original_view_data = [] 
         
-        f_cat = self.filter_cat_var.get()
-        f_prod = self.filter_prod_var.get()
+        f_cat = self.filter_cat_var.get().strip()
+        f_prod = self.filter_prod_var.get().strip()
         s_txt = self.ent_search.get().strip().lower()
 
         try:
@@ -126,11 +214,11 @@ class InventoryScreen:
                 params = []
 
                 if f_cat and f_cat != "All Categories":
-                    query += " AND c.category = ?"
-                    params.append(f_cat)
+                    query += " AND c.category LIKE ?"
+                    params.append(f"%{f_cat}%")
                 if f_prod and f_prod != "All Products":
-                    query += " AND c.product_name = ?"
-                    params.append(f_prod)
+                    query += " AND c.product_name LIKE ?"
+                    params.append(f"%{f_prod}%")
                 if s_txt:
                     query += " AND LOWER(i.barcode) LIKE ?"
                     params.append(f"%{s_txt}%")
@@ -185,7 +273,6 @@ class InventoryScreen:
         sel = self.tree.selection()
         if not sel: return
         
-        # Grab exactly what is currently in the table
         row_data = self.tree.item(sel[0])['values']
         item_id = int(row_data[0])
         old_barcode = str(row_data[1]).strip()
@@ -193,7 +280,6 @@ class InventoryScreen:
         old_exp = str(row_data[4]).strip()
         old_status = str(row_data[5]).strip()
         
-        # Grab exactly what the admin typed
         new_barcode = self.ent_barcode_edit.get().strip()
         new_lot = self.ent_lot.get().strip()
         new_exp = self.ent_exp.get().strip()
@@ -206,19 +292,13 @@ class InventoryScreen:
             messagebox.showwarning("Error", "Invalid Date or Status.", parent=self.root)
             return
             
-        # --- THE FIX: Smart Detection ---
         status_changed = (new_status != old_status)
         details_changed = (new_barcode != old_barcode) or (new_lot != old_lot) or (new_exp != old_exp)
         
         actions_to_log = []
-        if details_changed:
-            actions_to_log.append("Manual Edit")
-        if status_changed:
-            actions_to_log.append(new_status)
-            
-        # If they hit update but didn't change anything, just log a generic edit
-        if not actions_to_log:
-            actions_to_log.append("Manual Edit")
+        if details_changed: actions_to_log.append("Manual Edit")
+        if status_changed: actions_to_log.append(new_status)
+        if not actions_to_log: actions_to_log.append("Manual Edit")
             
         warning_msg = "Update this item's details?"
         if messagebox.askyesno("Confirm Update", warning_msg, parent=self.root):
@@ -229,8 +309,6 @@ class InventoryScreen:
                     conn.execute("UPDATE Inventory SET barcode=?, lot_number=?, expiry_date=?, status=? WHERE item_id=?", 
                                  (new_barcode, new_lot, new_exp, new_status, item_id))
                     
-                    # Instead of logging once, we loop through the actions list!
-                    # This guarantees both "Manual Edit" AND "Consumed" get safely logged.
                     for action in actions_to_log:
                         conn.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, ?, ?)", 
                                      (item_id, new_barcode, self.user_id, action, timestamp_str))
@@ -248,7 +326,6 @@ class InventoryScreen:
         if not sel: return
         row_data = self.tree.item(sel[0])['values']
         
-        # --- THE FIX: We explicitly force the barcode into a string so SQLite doesn't choke on huge numbers ---
         item_id = int(row_data[0])
         barcode_val = str(row_data[1]).strip()
 
