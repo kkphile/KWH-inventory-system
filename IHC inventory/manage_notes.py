@@ -3,12 +3,11 @@ from tkinter import ttk, messagebox
 import sqlite3
 
 class ManageNotesScreen:
-    # 1. ADDED on_update to receive the signal
     def __init__(self, root, current_user, user_role, on_update=None):
         self.root = root
         self.current_user = current_user
         self.user_role = user_role
-        self.on_update = on_update # Save the callback
+        self.on_update = on_update 
         self.root.title("KWH Inventory System - Manage Notes")
         
         window_width = 750
@@ -32,7 +31,14 @@ class ManageNotesScreen:
         self.tree.column("Time", width=150, anchor="center")
 
         self.tree["displaycolumns"] = ("User", "Message", "Time")
-        self.tree.pack(fill="both", expand=True)
+        
+        # --- THE FIX: Added Scrollbar ---
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side=tk.LEFT, fill="both", expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill="y")
+        
         self.tree.bind("<ButtonRelease-1>", self.select_note)
 
         edit_frame = tk.LabelFrame(self.root, text="Edit Selected Note", padx=10, pady=10)
@@ -91,10 +97,7 @@ class ManageNotesScreen:
                     with sqlite3.connect("KWH_Inventory_System.db") as conn:
                         conn.execute("UPDATE Notes SET content = ? WHERE note_id = ?", (new_content, note_id))
                     self.load_notes()
-                    
-                    # 2. TRIGGER DASHBOARD REFRESH
                     if self.on_update: self.on_update()
-                    
                     messagebox.showinfo("Success", "Notice board updated!", parent=self.root)
                 except sqlite3.Error as e:
                     messagebox.showerror("Error", f"Update failed: {e}", parent=self.root)
@@ -115,10 +118,7 @@ class ManageNotesScreen:
                     with sqlite3.connect("KWH_Inventory_System.db") as conn:
                         conn.execute("DELETE FROM Notes WHERE note_id = ?", (note_id,))
                     self.load_notes()
-                    
-                    # 3. TRIGGER DASHBOARD REFRESH
                     if self.on_update: self.on_update()
-                    
                 except sqlite3.Error as e:
                     messagebox.showerror("Error", f"Delete failed: {e}", parent=self.root)
 

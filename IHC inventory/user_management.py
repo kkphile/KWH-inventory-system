@@ -16,7 +16,6 @@ class UserManagementScreen:
         center_y = int(screen_height / 2 - window_height / 2)
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
 
-        # --- Auto-Migration: Safely adds 'is_active' to your database if it doesn't exist ---
         self.ensure_is_active_column()
 
         list_frame = tk.LabelFrame(self.root, text="System Users", padx=10, pady=10)
@@ -30,7 +29,13 @@ class UserManagementScreen:
         self.tree.column("Role", width=150, anchor="center")
         self.tree["displaycolumns"] = ("Username", "Role")
         
-        self.tree.pack(fill="both", expand=True)
+        # --- THE FIX: Added Scrollbar ---
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side=tk.LEFT, fill="both", expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill="y")
+        
         self.tree.bind("<ButtonRelease-1>", self.select_user)
 
         form_frame = tk.LabelFrame(self.root, text="Add / Update User", padx=10, pady=10)
@@ -62,7 +67,6 @@ class UserManagementScreen:
         self.load_users()
 
     def ensure_is_active_column(self):
-        """Automatically checks the database and adds the is_active column safely."""
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
                 cursor = conn.cursor()
@@ -83,7 +87,6 @@ class UserManagementScreen:
         for i in self.tree.get_children(): self.tree.delete(i)
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                # Only load users that are active (is_active = 1)
                 cursor = conn.execute("SELECT user_id, username, role FROM Users WHERE is_active = 1 ORDER BY username ASC")
                 for row in cursor:
                     self.tree.insert("", "end", values=row)
@@ -113,7 +116,6 @@ class UserManagementScreen:
 
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                # Check if user previously existed before trying to insert
                 cursor = conn.execute("SELECT user_id, is_active FROM Users WHERE username=?", (uname,))
                 existing_user = cursor.fetchone()
 
@@ -122,12 +124,10 @@ class UserManagementScreen:
                         messagebox.showerror("Error", "Username already exists.", parent=self.root)
                         return
                     else:
-                        # Resurrect a soft-deleted user instead of creating a duplicate row
                         conn.execute("UPDATE Users SET password_hash=?, role=?, is_active=1 WHERE user_id=?", 
                                      (self.hash_pw(pw), role, existing_user[0]))
                         messagebox.showinfo("Success", f"Previously deleted user '{uname}' has been restored and updated.", parent=self.root)
                 else:
-                    # Insert a brand new user
                     conn.execute("INSERT INTO Users (username, password_hash, role, is_active) VALUES (?, ?, ?, 1)", 
                                  (uname, self.hash_pw(pw), role))
                     messagebox.showinfo("Success", f"User '{uname}' added.", parent=self.root)
@@ -161,7 +161,6 @@ class UserManagementScreen:
     def delete_user(self):
         if not self.selected_user_id: return
         
-        # Prevent deleting the main admin account 
         if self.ent_username.get().strip() == 'admin':
             messagebox.showwarning("Warning", "Cannot delete the default 'admin' account.", parent=self.root)
             return
@@ -169,7 +168,6 @@ class UserManagementScreen:
         if messagebox.askyesno("Confirm", "Delete this user?", parent=self.root):
             try:
                 with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                    # --- THE FIX: Soft Delete updates is_active to 0 instead of DROP ---
                     conn.execute("UPDATE Users SET is_active = 0 WHERE user_id = ?", (self.selected_user_id,))
                 
                 self.load_users()

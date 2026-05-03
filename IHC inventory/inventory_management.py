@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 import datetime
+import re 
 
 class InventoryScreen:
     def __init__(self, root, role, user_id=None, on_update=None):
@@ -65,9 +66,8 @@ class InventoryScreen:
         
         self.tree["displaycolumns"] = ("Barcode", "Product", "Lot", "Expiry Date", "Received Date", "Status")
         
-        # --- THE FIX: Added Scrollbar to Inventory Table ---
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
+        self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side=tk.LEFT, fill="both", expand=True)
         scrollbar.pack(side=tk.RIGHT, fill="y")
         
@@ -233,6 +233,11 @@ class InventoryScreen:
                     c_all_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
                     self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c_all_cat]
 
+                    # --- THE FIX: Auto-reset Category if Product is cleared or set to 'All Products' ---
+                    if selected_prod == "All Products" or not selected_prod:
+                        self.combo_filter_cat.set("All Categories")
+                        selected_cat = "All Categories"
+
                 if selected_cat == "All Categories" or not selected_cat:
                     c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
                 else:
@@ -344,8 +349,15 @@ class InventoryScreen:
 
     def sort_tree_data(self, col, reverse):
         l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
-        l.sort(reverse=reverse)
-        for index, (val, k) in enumerate(l): self.tree.move(k, '', index)
+        
+        def natural_sort_key(item):
+            val = item[0]
+            return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', str(val))]
+            
+        l.sort(key=natural_sort_key, reverse=reverse)
+        
+        for index, (val, k) in enumerate(l): 
+            self.tree.move(k, '', index)
 
     def select_item(self, event):
         if self.role != 'admin': return

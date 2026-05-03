@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
+import re 
 
 class CatalogScreen:
     def __init__(self, root, role, on_update=None):
@@ -68,7 +69,6 @@ class CatalogScreen:
         else:
             self.tree["displaycolumns"] = ("Name", "Category", "Stock")
             
-        # --- THE FIX: Added Scrollbar to Catalog Table ---
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscroll=scrollbar.set)
         self.tree.pack(side=tk.LEFT, fill="both", expand=True)
@@ -213,6 +213,11 @@ class CatalogScreen:
                     c_all_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
                     self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c_all_cat]
 
+                    # --- THE FIX: Auto-reset Category if Product is cleared or set to 'All Products' ---
+                    if selected_prod == "All Products" or not selected_prod:
+                        self.combo_filter_cat.set("All Categories")
+                        selected_cat = "All Categories"
+
                 if selected_cat == "All Categories" or not selected_cat:
                     c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
                 else:
@@ -310,10 +315,16 @@ class CatalogScreen:
 
     def sort_tree_data(self, col, reverse):
         l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
-        def convert_to_number_if_possible(val):
-            try: return float(val)
-            except ValueError: return str(val).lower()
-        l.sort(key=lambda t: convert_to_number_if_possible(t[0]), reverse=reverse)
+        
+        def natural_sort_key(item):
+            val = item[0]
+            try:
+                return [float(val)]
+            except ValueError:
+                return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', str(val))]
+                
+        l.sort(key=natural_sort_key, reverse=reverse)
+        
         for index, (val, k) in enumerate(l):
             self.tree.move(k, '', index)
 

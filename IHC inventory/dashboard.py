@@ -59,14 +59,23 @@ class MainDashboard:
         alert_frame = tk.LabelFrame(right_frame, text="⚠️ Low Stock Alerts", font=("Arial", 14, "bold"), bg="#ecf0f1", fg="#c0392b")
         alert_frame.pack(side=tk.TOP, fill="both", expand=True, pady=(0, 10))
 
-        self.alert_tree = ttk.Treeview(alert_frame, columns=("Product", "Category", "Current Stock", "Threshold"), show="headings")
+        # --- THE FIX: Container and scrollbar for Alerts ---
+        alert_tree_container = tk.Frame(alert_frame, bg="#ecf0f1")
+        alert_tree_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.alert_tree = ttk.Treeview(alert_tree_container, columns=("Product", "Category", "Current Stock", "Threshold"), show="headings")
         self.alert_tree.heading("Product", text="Product Name")
         self.alert_tree.heading("Category", text="Category")
         self.alert_tree.heading("Current Stock", text="Current Stock")
         self.alert_tree.heading("Threshold", text="Min. Threshold")
         self.alert_tree.column("Current Stock", width=100, anchor="center")
         self.alert_tree.column("Threshold", width=100, anchor="center")
-        self.alert_tree.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        alert_scroll = ttk.Scrollbar(alert_tree_container, orient=tk.VERTICAL, command=self.alert_tree.yview)
+        self.alert_tree.configure(yscrollcommand=alert_scroll.set)
+        
+        self.alert_tree.pack(side=tk.LEFT, fill="both", expand=True)
+        alert_scroll.pack(side=tk.RIGHT, fill="y")
         self.alert_tree.tag_configure('low_stock_danger', foreground='red')
 
         # Bottom Right: Notice Board & Chat
@@ -77,14 +86,23 @@ class MainDashboard:
         notice_btn_frame.pack(fill="x", padx=10, pady=(5, 0))
         tk.Button(notice_btn_frame, text="⚙️ Manage/Edit", font=("Arial", 9, "bold"), bg="#bdc3c7", fg="#2c3e50", cursor="hand2", command=self.open_notes).pack(side=tk.RIGHT)
 
-        self.notice_tree = ttk.Treeview(notice_frame, columns=("User", "Message", "Time"), show="headings", height=5)
+        # --- THE FIX: Container and scrollbar for Notice Board ---
+        notice_tree_container = tk.Frame(notice_frame, bg="#ecf0f1")
+        notice_tree_container.pack(fill="both", expand=True, padx=10, pady=(5, 5))
+
+        self.notice_tree = ttk.Treeview(notice_tree_container, columns=("User", "Message", "Time"), show="headings", height=5)
         self.notice_tree.heading("User", text="Posted By")
         self.notice_tree.heading("Message", text="Announcement")
         self.notice_tree.heading("Time", text="Date & Time")
         self.notice_tree.column("User", width=120)
         self.notice_tree.column("Message", width=500)
         self.notice_tree.column("Time", width=150, anchor="center")
-        self.notice_tree.pack(fill="x", padx=10, pady=(5, 5))
+        
+        notice_scroll = ttk.Scrollbar(notice_tree_container, orient=tk.VERTICAL, command=self.notice_tree.yview)
+        self.notice_tree.configure(yscrollcommand=notice_scroll.set)
+
+        self.notice_tree.pack(side=tk.LEFT, fill="both", expand=True)
+        notice_scroll.pack(side=tk.RIGHT, fill="y")
 
         # Chat Typing Box
         chat_frame = tk.Frame(notice_frame, bg="#ecf0f1")
@@ -111,12 +129,10 @@ class MainDashboard:
     def run_background_sync(self):
         """Silently syncs the dashboard with the database and tracks its own timer ID."""
         self.refresh_all_data()
-        # Save the timer ID so we can cancel it later
         self.sync_id = self.root.after(10000, self.run_background_sync)
 
     def logout(self):
         if messagebox.askyesno("Logout", "Are you sure you want to log out?"):
-            # --- THE FIX: Cancel the zombie timer before destroying the window ---
             if self.sync_id:
                 self.root.after_cancel(self.sync_id)
             
@@ -169,7 +185,6 @@ class MainDashboard:
             self.refresh_all_data()
         except Exception as e: messagebox.showerror("Error", f"Post failed: {e}")
 
-    # --- Strict Window Management ---
     def open_single_window(self, window_name, window_class, *args, **kwargs):
         if window_name in self.open_windows and self.open_windows[window_name].winfo_exists():
             self.open_windows[window_name].lift()
