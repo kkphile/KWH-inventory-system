@@ -17,9 +17,9 @@ class BatchInStockScreen:
         tk.Label(frame, text="1. Set Batch Details:", font=("Arial", 11, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky="w")
         tk.Label(frame, text="Product:").grid(row=1, column=0, pady=5, sticky="e")
         
-        # --- THE FIX: Floating Overlay Smart Search Setup ---
         self.cat_var = tk.StringVar()
-        self.cb_product = ttk.Combobox(frame, textvariable=self.cat_var, width=28) # Removed state="readonly"
+        # --- THE FIX: Postcommand added here too ---
+        self.cb_product = ttk.Combobox(frame, textvariable=self.cat_var, width=28, postcommand=self.click_drop_prod) 
         self.cb_product.grid(row=1, column=1, pady=5)
         
         self.cb_product.bind("<<ComboboxSelected>>", self.on_product_type)
@@ -37,7 +37,7 @@ class BatchInStockScreen:
         self.ent_lot = tk.Entry(frame, width=31)
         self.ent_lot.grid(row=2, column=1, pady=5)
 
-        tk.Label(frame, text="Expiry (YYYY-MM-DD):").grid(row=3, column=0, pady=5, sticky="e")
+        tk.Label(frame, text="Expiry Date (YYYY-MM-DD):").grid(row=3, column=0, pady=5, sticky="e")
         self.ent_exp = tk.Entry(frame, width=31)
         self.ent_exp.grid(row=3, column=1, pady=5)
 
@@ -70,19 +70,25 @@ class BatchInStockScreen:
             self.cb_product['values'] = self.all_products
         except Exception as e: messagebox.showerror("Error", str(e))
 
-    # --- NEW: Floating Listbox Controllers ---
+    def click_drop_prod(self):
+        self.cb_product['values'] = self.all_products
+
     def apply_selection(self):
         if self.prod_listbox.curselection():
             self.cat_var.set(self.prod_listbox.get(self.prod_listbox.curselection()))
             self.prod_listbox.place_forget()
 
     def update_floating_listbox(self, event):
-        if not event or not hasattr(event, 'keysym'): return
+        if not event or not hasattr(event, 'keysym') or event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"): 
+            self.prod_listbox.place_forget()
+            return
         
         typed = self.cat_var.get().strip()
         vals = self.cb_product['values']
         
-        if typed and vals and not (len(vals) == 1 and vals[0].lower() == typed.lower()):
+        exact_match = any(str(v).lower() == typed.lower() for v in vals)
+        
+        if typed and vals and not exact_match:
             self.prod_listbox.delete(0, tk.END)
             for v in vals: self.prod_listbox.insert(tk.END, v)
             
@@ -123,7 +129,6 @@ class BatchInStockScreen:
 
         if not barcode: return
         
-        # --- SECURITY FIX: Prevent scanning if product isn't real ---
         if prod not in self.cat_map:
             messagebox.showwarning("Invalid Product", "Please select a valid product from the list.")
             self.ent_barcode.delete(0, tk.END)
@@ -154,7 +159,13 @@ class BatchInStockScreen:
             
             if self.on_update: self.on_update()
             
-            messagebox.showinfo("Success", f"Added: {barcode}")
+            if qty == 1:
+                success_msg = f"Successfully added 1 item.\n\nProduct: {prod}\nLot Number: {lot}"
+            else:
+                success_msg = f"Successfully added {qty} items!\n\nProduct: {prod}\nLot Number: {lot}"
+                
+            messagebox.showinfo("Success", success_msg)
+            
             self.ent_barcode.delete(0, tk.END)
             self.ent_barcode.focus()
             

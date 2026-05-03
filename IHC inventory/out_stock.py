@@ -57,6 +57,10 @@ class OutStockScreen:
                     return
                 cat_id = res[0]
 
+                cursor.execute("SELECT product_name FROM Catalog WHERE catalog_id=?", (cat_id,))
+                prod_res = cursor.fetchone()
+                product_name = prod_res[0] if prod_res else "Unknown Product"
+
                 cursor.execute("""
                     SELECT item_id, lot_number, expiry_date, barcode 
                     FROM Inventory WHERE catalog_id=? AND status='In_Stock'
@@ -98,14 +102,15 @@ class OutStockScreen:
                 cursor.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'Consumed', ?)", 
                                (selected_item['id'], barcode_input, self.user_id, timestamp))
                 
-                # FIX: Force the database to save immediately before telling the dashboard to refresh
                 conn.commit()
                 
-            # Now that it is officially saved, tell the dashboard to update!
             if self.on_update: 
                 self.on_update()
             
-            messagebox.showinfo("Success", f"Consumed Lot: {selected_item['lot']}", parent=self.root)
+            # --- THE FIX: Removed quantity entirely, keeping it simple and clean ---
+            success_msg = f"Successfully consumed!\n\nProduct: {product_name}\nLot Number: {selected_item['lot']}"
+            messagebox.showinfo("Success", success_msg, parent=self.root)
+            
             self.ent_barcode.delete(0, tk.END)
             self.ent_barcode.focus()
 

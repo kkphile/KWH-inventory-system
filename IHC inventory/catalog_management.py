@@ -30,14 +30,14 @@ class CatalogScreen:
         
         tk.Label(filter_frame, text="Category:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.filter_cat_var = tk.StringVar()
-        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=15)
+        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=15, postcommand=self.click_drop_cat)
         self.combo_filter_cat.pack(side=tk.LEFT, padx=(5, 15))
         self.combo_filter_cat.bind("<<ComboboxSelected>>", self.on_category_select)
         self.combo_filter_cat.bind("<KeyRelease>", self.on_category_select)
         
         tk.Label(filter_frame, text="Product:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.filter_prod_var = tk.StringVar()
-        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=20)
+        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=20, postcommand=self.click_drop_prod)
         self.combo_filter_prod.pack(side=tk.LEFT, padx=(5, 15))
         self.combo_filter_prod.bind("<<ComboboxSelected>>", self.on_product_type)
         self.combo_filter_prod.bind("<KeyRelease>", self.on_product_type)
@@ -68,7 +68,12 @@ class CatalogScreen:
         else:
             self.tree["displaycolumns"] = ("Name", "Category", "Stock")
             
-        self.tree.pack(fill="both", expand=True)
+        # --- THE FIX: Added Scrollbar to Catalog Table ---
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        self.tree.pack(side=tk.LEFT, fill="both", expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill="y")
+        
         self.tree.bind("<ButtonRelease-1>", self.select_item)
 
         if self.role == 'admin':
@@ -81,7 +86,7 @@ class CatalogScreen:
 
             tk.Label(form_frame, text="Category:").grid(row=0, column=2, padx=5, pady=5)
             self.cat_var = tk.StringVar()
-            self.combo_cat = ttk.Combobox(form_frame, textvariable=self.cat_var, width=18)
+            self.combo_cat = ttk.Combobox(form_frame, textvariable=self.cat_var, width=18, postcommand=self.click_drop_cat_form)
             self.combo_cat.grid(row=0, column=3, padx=5, pady=5)
 
             tk.Label(form_frame, text="Min Threshold:").grid(row=0, column=4, padx=5, pady=5)
@@ -98,6 +103,38 @@ class CatalogScreen:
 
         self.clear_filters()
 
+    def click_drop_cat(self):
+        selected_prod = self.filter_prod_var.get().strip()
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                if selected_prod and selected_prod != "All Products":
+                    exact_match = conn.execute("SELECT category FROM Catalog WHERE product_name = ?", (selected_prod,)).fetchone()
+                    if exact_match:
+                        self.combo_filter_cat['values'] = ["All Categories", exact_match[0]]
+                        return 
+
+                c = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
+                self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c]
+        except: pass
+
+    def click_drop_prod(self):
+        selected_cat = self.filter_cat_var.get().strip()
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                if selected_cat == "All Categories" or not selected_cat:
+                    c = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
+                else:
+                    c = conn.execute("SELECT DISTINCT product_name FROM Catalog WHERE category LIKE ? ORDER BY product_name ASC", (f"%{selected_cat}%",))
+                self.combo_filter_prod['values'] = ["All Products"] + [row[0] for row in c]
+        except: pass
+
+    def click_drop_cat_form(self):
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                c = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
+                self.combo_cat['values'] = [row[0] for row in c]
+        except: pass
+
     def apply_selection(self, combobox, listbox, callback):
         if listbox.curselection():
             combobox.set(listbox.get(listbox.curselection()))
@@ -105,12 +142,16 @@ class CatalogScreen:
             callback()
 
     def update_floating_listbox(self, combobox, listbox, var, event):
-        if not event or not hasattr(event, 'keysym'): return
+        if not event or not hasattr(event, 'keysym') or event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"): 
+            listbox.place_forget()
+            return
         
         typed = var.get().strip()
         vals = combobox['values']
         
-        if typed and vals and not (len(vals) == 1 and vals[0].lower() == typed.lower()):
+        exact_match = any(str(v).lower() == typed.lower() for v in vals)
+        
+        if typed and vals and not exact_match:
             listbox.delete(0, tk.END)
             for v in vals: listbox.insert(tk.END, v)
             

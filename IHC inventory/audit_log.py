@@ -20,14 +20,14 @@ class AuditLogScreen:
 
         tk.Label(filter_frame, text="Category:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
         self.filter_cat_var = tk.StringVar()
-        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=18)
+        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=18, postcommand=self.click_drop_cat)
         self.combo_filter_cat.grid(row=0, column=3, padx=5, pady=5)
         self.combo_filter_cat.bind("<<ComboboxSelected>>", self.on_category_select)
         self.combo_filter_cat.bind("<KeyRelease>", self.on_category_select)
 
         tk.Label(filter_frame, text="Product:").grid(row=0, column=4, padx=5, pady=5, sticky="e")
         self.filter_prod_var = tk.StringVar()
-        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=22)
+        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=22, postcommand=self.click_drop_prod)
         self.combo_filter_prod.grid(row=0, column=5, padx=5, pady=5)
         self.combo_filter_prod.bind("<<ComboboxSelected>>", self.on_product_type)
         self.combo_filter_prod.bind("<KeyRelease>", self.on_product_type)
@@ -84,6 +84,32 @@ class AuditLogScreen:
 
         self.load_dropdowns()
 
+    # --- THE FIX: Smart Dropdown Listener ---
+    def click_drop_cat(self):
+        selected_prod = self.filter_prod_var.get().strip()
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                if selected_prod and selected_prod != "All Products":
+                    exact_match = conn.execute("SELECT category FROM Catalog WHERE product_name = ?", (selected_prod,)).fetchone()
+                    if exact_match:
+                        self.combo_filter_cat['values'] = ["All Categories", exact_match[0]]
+                        return 
+
+                c = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
+                self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c]
+        except: pass
+
+    def click_drop_prod(self):
+        selected_cat = self.filter_cat_var.get().strip()
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                if selected_cat == "All Categories" or not selected_cat:
+                    c = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
+                else:
+                    c = conn.execute("SELECT DISTINCT product_name FROM Catalog WHERE category LIKE ? ORDER BY product_name ASC", (f"%{selected_cat}%",))
+                self.combo_filter_prod['values'] = ["All Products"] + [row[0] for row in c]
+        except: pass
+
     def validate_date(self, date_text):
         try:
             datetime.datetime.strptime(date_text, '%Y-%m-%d')
@@ -113,12 +139,16 @@ class AuditLogScreen:
             callback()
 
     def update_floating_listbox(self, combobox, listbox, var, event):
-        if not event or not hasattr(event, 'keysym'): return
+        if not event or not hasattr(event, 'keysym') or event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"): 
+            listbox.place_forget()
+            return
         
         typed = var.get().strip()
         vals = combobox['values']
         
-        if typed and vals and not (len(vals) == 1 and vals[0].lower() == typed.lower()):
+        exact_match = any(str(v).lower() == typed.lower() for v in vals)
+        
+        if typed and vals and not exact_match:
             listbox.delete(0, tk.END)
             for v in vals: listbox.insert(tk.END, v)
             
