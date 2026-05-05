@@ -2,54 +2,55 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 import datetime
+from utils import is_valid_date
 
 class AuditLogScreen:
     def __init__(self, root):
         self.root = root
         self.root.title("KWH Inventory System - Audit Logs")
-        self.root.geometry("1100x650") 
+        self.root.geometry("1100x650")
 
         filter_frame = tk.LabelFrame(self.root, text="Search & Filter", padx=10, pady=10)
         filter_frame.pack(fill="x", padx=20, pady=10)
-
+        
         tk.Label(filter_frame, text="Action:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.filter_act_var = tk.StringVar()
         self.combo_filter_act = ttk.Combobox(filter_frame, textvariable=self.filter_act_var, state="readonly", width=15)
         self.combo_filter_act.grid(row=0, column=1, padx=5, pady=5)
         self.combo_filter_act.bind("<<ComboboxSelected>>", lambda e: self.load_logs())
-
+        
         tk.Label(filter_frame, text="Category:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
         self.filter_cat_var = tk.StringVar()
         self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=18, postcommand=self.click_drop_cat)
         self.combo_filter_cat.grid(row=0, column=3, padx=5, pady=5)
         self.combo_filter_cat.bind("<<ComboboxSelected>>", self.on_category_select)
         self.combo_filter_cat.bind("<KeyRelease>", self.on_category_select)
-
+        
         tk.Label(filter_frame, text="Product:").grid(row=0, column=4, padx=5, pady=5, sticky="e")
         self.filter_prod_var = tk.StringVar()
         self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=22, postcommand=self.click_drop_prod)
         self.combo_filter_prod.grid(row=0, column=5, padx=5, pady=5)
         self.combo_filter_prod.bind("<<ComboboxSelected>>", self.on_product_type)
         self.combo_filter_prod.bind("<KeyRelease>", self.on_product_type)
-
+        
         tk.Label(filter_frame, text="Barcode:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.ent_search = tk.Entry(filter_frame, width=18)
         self.ent_search.grid(row=1, column=1, padx=5, pady=5)
         self.ent_search.bind("<KeyRelease>", lambda e: self.load_logs())
-
-        tk.Label(filter_frame, text="From (YYYY-MM-DD):").grid(row=1, column=2, padx=5, pady=5, sticky="e")
+        
+        tk.Label(filter_frame, text="From Date (YYYY-MM-DD):").grid(row=1, column=2, padx=5, pady=5, sticky="e")
         self.ent_start = tk.Entry(filter_frame, width=12)
         self.ent_start.grid(row=1, column=3, padx=5, pady=5)
-
-        tk.Label(filter_frame, text="To Date:").grid(row=1, column=4, padx=5, pady=5, sticky="e")
+        
+        tk.Label(filter_frame, text="To Date (YYYY-MM-DD):").grid(row=1, column=4, padx=5, pady=5, sticky="e")
         self.ent_end = tk.Entry(filter_frame, width=12)
         self.ent_end.grid(row=1, column=5, padx=5, pady=5, sticky="w")
-
+        
         btn_frame = tk.Frame(filter_frame)
         btn_frame.grid(row=1, column=6, padx=10, sticky="w")
         tk.Button(btn_frame, text="Search Dates", bg="#3498db", fg="white", font=("Arial", 9, "bold"), cursor="hand2", command=self.load_logs).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Clear", bg="#95a5a6", fg="white", font=("Arial", 9, "bold"), cursor="hand2", command=self.clear_filters).pack(side=tk.LEFT, padx=5)
-
+        
         self.cat_listbox = tk.Listbox(self.root, font=("Arial", 10), bg="#fdfdfe", selectbackground="#3498db", relief=tk.SOLID, bd=1)
         self.prod_listbox = tk.Listbox(self.root, font=("Arial", 10), bg="#fdfdfe", selectbackground="#3498db", relief=tk.SOLID, bd=1)
         
@@ -58,10 +59,9 @@ class AuditLogScreen:
         
         self.combo_filter_cat.bind("<FocusOut>", lambda e: self.cat_listbox.after(150, self.cat_listbox.place_forget))
         self.combo_filter_prod.bind("<FocusOut>", lambda e: self.prod_listbox.after(150, self.prod_listbox.place_forget))
-
+        
         frame = tk.LabelFrame(self.root, text="System Action History", padx=10, pady=10)
         frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-
         self.tree = ttk.Treeview(frame, columns=("LogID", "Barcode", "Product", "User", "Action", "Timestamp"), show='headings')
         self.tree.heading("Barcode", text="Barcode")
         self.tree.heading("Product", text="Product Name")
@@ -70,21 +70,19 @@ class AuditLogScreen:
         self.tree.heading("Timestamp", text="Date & Time")
         
         self.tree["displaycolumns"] = ("Barcode", "Product", "User", "Action", "Timestamp")
-        
         self.tree.column("Barcode", width=120)
         self.tree.column("Product", width=220)
         self.tree.column("User", width=100)
         self.tree.column("Action", width=100)
         self.tree.column("Timestamp", width=150)
-
+        
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
+        self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side=tk.LEFT, fill="both", expand=True)
         scrollbar.pack(side=tk.RIGHT, fill="y")
-
+        
         self.load_dropdowns()
 
-    # --- THE FIX: Smart Dropdown Listener ---
     def click_drop_cat(self):
         selected_prod = self.filter_prod_var.get().strip()
         try:
@@ -94,7 +92,6 @@ class AuditLogScreen:
                     if exact_match:
                         self.combo_filter_cat['values'] = ["All Categories", exact_match[0]]
                         return 
-
                 c = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
                 self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c]
         except: pass
@@ -110,13 +107,6 @@ class AuditLogScreen:
                 self.combo_filter_prod['values'] = ["All Products"] + [row[0] for row in c]
         except: pass
 
-    def validate_date(self, date_text):
-        try:
-            datetime.datetime.strptime(date_text, '%Y-%m-%d')
-            return True
-        except ValueError:
-            return False
-
     def load_dropdowns(self):
         core_actions = ["In_Stock", "Consumed", "Discarded", "Manual Edit", "Deleted"]
         try:
@@ -126,8 +116,7 @@ class AuditLogScreen:
                 for act in db_actions:
                     if act not in core_actions: core_actions.append(act)
         except Exception:
-            pass 
-            
+            pass             
         self.combo_filter_act['values'] = ["All Actions"] + core_actions
         self.combo_filter_act.set("All Actions")
         self.clear_filters()
@@ -145,7 +134,6 @@ class AuditLogScreen:
         
         typed = var.get().strip()
         vals = combobox['values']
-        
         exact_match = any(str(v).lower() == typed.lower() for v in vals)
         
         if typed and vals and not exact_match:
@@ -162,7 +150,7 @@ class AuditLogScreen:
     def on_category_select(self, event=None):
         if event and hasattr(event, 'keysym') and event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"):
             return
-            
+        
         selected_cat = self.filter_cat_var.get().strip()
         
         try:
@@ -175,7 +163,6 @@ class AuditLogScreen:
                     new_cat_values = ["All Categories"] + [c for c in all_cats if selected_cat.lower() in c.lower()]
                 
                 self.combo_filter_cat['values'] = new_cat_values
-
                 if selected_cat == "All Categories" or not selected_cat:
                     c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
                 else:
@@ -187,14 +174,14 @@ class AuditLogScreen:
                     self.combo_filter_prod.set("All Products")
         except Exception: 
             pass
-            
+        
         self.load_logs()
         self.update_floating_listbox(self.combo_filter_cat, self.cat_listbox, self.filter_cat_var, event)
 
     def on_product_type(self, event=None):
         if event and hasattr(event, 'keysym') and event.keysym in ("Up", "Down", "Left", "Right", "Tab", "Return", "Escape"):
             return
-            
+        
         selected_prod = self.filter_prod_var.get().strip()
         selected_cat = self.filter_cat_var.get().strip()
         
@@ -209,7 +196,6 @@ class AuditLogScreen:
                 else:
                     c_all_cat = conn.execute("SELECT DISTINCT category FROM Catalog WHERE category != '' ORDER BY category ASC")
                     self.combo_filter_cat['values'] = ["All Categories"] + [row[0] for row in c_all_cat]
-
                 if selected_cat == "All Categories" or not selected_cat:
                     c_prod = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
                 else:
@@ -224,7 +210,7 @@ class AuditLogScreen:
                 self.combo_filter_prod['values'] = new_prod_values
         except Exception:
             pass
-            
+        
         self.load_logs()
         self.update_floating_listbox(self.combo_filter_prod, self.prod_listbox, self.filter_prod_var, event)
 
@@ -246,12 +232,16 @@ class AuditLogScreen:
         f_cat = self.filter_cat_var.get().strip()
         f_prod = self.filter_prod_var.get().strip()
         f_search = self.ent_search.get().strip().lower()
-        start_date = self.ent_start.get().strip()
-        end_date = self.ent_end.get().strip()
+        
+        raw_start = self.ent_start.get().strip()
+        raw_end = self.ent_end.get().strip()
 
-        if start_date and not self.validate_date(start_date):
-            return
-        if end_date and not self.validate_date(end_date):
+        # Capture formatted dates from utils
+        start_date = is_valid_date(raw_start, self.root)
+        end_date = is_valid_date(raw_end, self.root)
+
+        # Stop if an invalid format was entered
+        if start_date is False or end_date is False:
             return
 
         try:
@@ -265,7 +255,6 @@ class AuditLogScreen:
                     WHERE 1=1
                 """
                 params = []
-
                 if f_act and f_act != "All Actions":
                     query += " AND a.action = ?"
                     params.append(f_act)
@@ -284,9 +273,8 @@ class AuditLogScreen:
                 if end_date:
                     query += " AND date(a.timestamp) <= ?"
                     params.append(end_date)
-
+                
                 query += " ORDER BY a.timestamp DESC"
-
                 cursor = conn.execute(query, params)
                 for row in cursor:
                     self.tree.insert("", "end", values=row)

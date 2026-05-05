@@ -1,3 +1,6 @@
-﻿Product Name,Category,Low Stock Threshold,Barcode,Lot Number,Expiry Date,Received Date,Quantity
-CD 99,Antibody,0,23131341241241400000 ,131231231241241 ,15/8/2028,5/7/2026,2
-Prep Kit 3,Prep Kit,,1231124141242asdasdasd14000,123131241241242000 ,9/5/2029,9/8/2026,5
+﻿Barcode,Product,Category,Lot,Expiry Date,Received Date,Quantity
+10001,CD 10,Antibody,123,2028-12-31,2025-01-15,5
+10002,CD 30,Antibody,456,2027-10-10,2025-02-01,2
+10003,Optiview,Detection Kit,789,2026-05-20,2025-03-10,1
+10004,Ultraview,Detection Kit,101,2026-06-15,2025-03-10,10
+12312313,test,test,1231312333,,,

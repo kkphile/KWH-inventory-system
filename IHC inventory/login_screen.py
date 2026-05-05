@@ -7,7 +7,7 @@ class LoginScreen:
     def __init__(self, root):
         self.root = root
         
-        # --- NEW: Load Custom Settings from Database ---
+        # Load Custom Settings from Database
         self.theme_color = "#34495e"
         self.system_title = "KWH Inventory System"
         self.load_settings()
@@ -23,7 +23,7 @@ class LoginScreen:
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
         self.root.configure(bg="#ecf0f1")
 
-        # --- UPDATED: Apply Theme Color and Title to Header ---
+        # Apply Theme Color and Title to Header
         header_frame = tk.Frame(self.root, bg=self.theme_color, pady=20)
         header_frame.pack(fill="x")
         
@@ -43,8 +43,11 @@ class LoginScreen:
         self.ent_password.grid(row=1, column=1, pady=10, padx=10)
         self.ent_password.bind("<Return>", lambda e: self.login())
 
-        # --- UPDATED: Apply Theme Color to Login Button ---
+        # Apply Theme Color to Login Button
         tk.Button(self.root, text="Login", font=("Arial", 12, "bold"), bg=self.theme_color, fg="white", width=15, cursor="hand2", command=self.login).pack(pady=10)
+
+        # --- THE FIX: Add a tiny delay and forcefully grab the window's focus ---
+        self.root.after(50, self.ent_username.focus_force)
 
     def load_settings(self):
         """Fetches the customizable title and theme color from the database."""

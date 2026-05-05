@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 import datetime
+from utils import is_valid_date
 
 class OutStockScreen:
     def __init__(self, root, user_id, on_update=None):
@@ -16,34 +17,33 @@ class OutStockScreen:
         frame.pack(fill="both", expand=True, padx=20, pady=20)
 
         tk.Label(frame, text="1. Setup Details:", font=("Arial", 11, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky="w")
+        
         tk.Label(frame, text="Out-Stock Date:").grid(row=1, column=0, pady=5, sticky="e")
         self.ent_date = tk.Entry(frame, width=31)
         self.ent_date.insert(0, datetime.date.today().strftime("%Y-%m-%d"))
         self.ent_date.grid(row=1, column=1, pady=5, sticky="w")
-
+        
         ttk.Separator(frame, orient='horizontal').grid(row=2, column=0, columnspan=2, sticky='ew', pady=20)
+        
         tk.Label(frame, text="2. Scan Barcode:", font=("Arial", 11, "bold")).grid(row=3, column=0, columnspan=2, pady=(0, 5), sticky="w")
         
         self.ent_barcode = tk.Entry(frame, width=30, font=("Arial", 14))
         self.ent_barcode.grid(row=4, column=0, columnspan=2, pady=5)
         self.ent_barcode.focus() 
         self.ent_barcode.bind("<Return>", lambda e: self.consume_item())
-
+        
         tk.Button(frame, text="Consume", bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), width=15, command=self.consume_item).grid(row=5, column=0, columnspan=2, pady=15)
-
-    def validate_date(self, date_text):
-        try:
-            datetime.datetime.strptime(date_text, '%Y-%m-%d')
-            return True
-        except ValueError: return False
 
     def consume_item(self):
         barcode_input = self.ent_barcode.get().strip()
-        out_date = self.ent_date.get().strip()
+        raw_out_date = self.ent_date.get().strip()
+        
+        if not barcode_input: return 
 
-        if not barcode_input: return
-        if not self.validate_date(out_date):
-            messagebox.showwarning("Date Error", "Please provide a valid YYYY-MM-DD date.", parent=self.root)
+        # Format the date here so we save it perfectly later
+        out_date = is_valid_date(raw_out_date, self.root)
+
+        if not out_date: # Stops the save if it returned False (invalid) or "" (empty)
             return
 
         try:
@@ -82,7 +82,6 @@ class OutStockScreen:
 
                 parsed_items.sort(key=lambda x: x['dt'])
                 oldest_item = parsed_items[0]
-
                 selected_item = next((p for p in parsed_items if p['barcode'] == barcode_input), None)
 
                 if not selected_item:
@@ -90,24 +89,25 @@ class OutStockScreen:
                     return
 
                 if selected_item['dt'] > oldest_item['dt']:
-                    warn_msg = (f"🚨 FEFO ALERT! 🚨\n\nYou scanned: Lot {selected_item['lot']} (Exp: {selected_item['exp']})\n"
+                    warn_msg = (f"  FEFO ALERT!  \n\nYou scanned: Lot {selected_item['lot']} (Exp: {selected_item['exp']})\n"
                                f"Older stock exists: Lot {oldest_item['lot']} (Exp: {oldest_item['exp']})\n\n"
                                f"Do you want to bypass the older stock?")
                     if not messagebox.askyesno("Confirm Override", warn_msg, icon='warning', parent=self.root):
                         self.ent_barcode.delete(0, tk.END)
                         return
 
+                # Using our perfectly padded out_date 
                 timestamp = f"{out_date} {datetime.datetime.now().strftime('%H:%M:%S')}"
+
                 cursor.execute("UPDATE Inventory SET status='Consumed' WHERE item_id=?", (selected_item['id'],))
-                cursor.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'Consumed', ?)", 
-                               (selected_item['id'], barcode_input, self.user_id, timestamp))
+                cursor.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'Consumed', ?)",
+                                (selected_item['id'], barcode_input, self.user_id, timestamp))
                 
                 conn.commit()
-                
+            
             if self.on_update: 
                 self.on_update()
             
-            # --- THE FIX: Removed quantity entirely, keeping it simple and clean ---
             success_msg = f"Successfully consumed!\n\nProduct: {product_name}\nLot Number: {selected_item['lot']}"
             messagebox.showinfo("Success", success_msg, parent=self.root)
             
