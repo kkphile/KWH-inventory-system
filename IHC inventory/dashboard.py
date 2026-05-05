@@ -10,7 +10,12 @@ class MainDashboard:
         self.username = username
         self.role = role
         
-        self.root.title(f"KWH Inventory System - Dashboard ({self.role.upper()})")
+        self.ensure_settings_table()
+        self.settings = self.load_settings()
+        self.button_color = self.settings.get('theme_color', '#34495e')
+        self.system_title = self.settings.get('system_title', 'KWH Inventory System')
+
+        self.root.title(f"{self.system_title} - Dashboard ({self.role.upper()})")
         
         window_width = 1100
         window_height = 700
@@ -21,24 +26,27 @@ class MainDashboard:
         self.root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
         self.root.configure(bg="#ecf0f1")
 
-        # --- Memory Trackers ---
         self.open_windows = {}
-        self.sync_id = None # Tracker for the background timer
+        self.sync_id = None 
+        self.menu_buttons = [] 
 
-        # --- Top Header ---
-        header_frame = tk.Frame(self.root, bg="#2C3E50", pady=15)
-        header_frame.pack(fill="x")
-        tk.Label(header_frame, text=f"Welcome, {self.username}!", font=("Arial", 20, "bold"), bg="#2C3E50", fg="white").pack(side=tk.LEFT, padx=20)
+        self.header_frame = tk.Frame(self.root, bg=self.button_color, pady=15)
+        self.header_frame.pack(fill="x")
         
-        btn_header_frame = tk.Frame(header_frame, bg="#2C3E50")
-        btn_header_frame.pack(side=tk.RIGHT, padx=20)
-        tk.Button(btn_header_frame, text="Logout", bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), cursor="hand2", command=self.logout).pack(side=tk.LEFT, padx=5)
+        self.title_label = tk.Label(self.header_frame, text=self.system_title, font=("Arial", 24, "bold"), bg=self.button_color, fg="white")
+        self.title_label.pack(side=tk.LEFT, padx=(20, 10))
+        
+        self.welcome_label = tk.Label(self.header_frame, text=f"Welcome, {self.username}", font=("Arial", 12, "italic"), bg=self.button_color, fg="white")
+        self.welcome_label.pack(side=tk.LEFT, pady=(10, 0))
+        
+        self.btn_header_frame = tk.Frame(self.header_frame, bg=self.button_color)
+        self.btn_header_frame.pack(side=tk.RIGHT, padx=20)
+        
+        tk.Button(self.btn_header_frame, text="Logout", bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), cursor="hand2", command=self.logout).pack(side=tk.LEFT, padx=5)
 
-        # --- Main Content Area ---
         content_frame = tk.Frame(self.root, bg="#ecf0f1")
         content_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # --- Left Menu ---
         menu_frame = tk.Frame(content_frame, bg="#ecf0f1")
         menu_frame.pack(side=tk.LEFT, fill="y", padx=(0, 20))
 
@@ -50,16 +58,14 @@ class MainDashboard:
             self.create_menu_button(menu_frame, "📥 Batch In-Stock", self.open_in_stock)
             self.create_menu_button(menu_frame, "📦 Inventory View", self.open_inventory)
             self.create_menu_button(menu_frame, "👥 Manage Users", self.open_users)
+            self.create_menu_button(menu_frame, "⚙️ System Settings", self.open_system_settings)
 
-        # --- Right Area (Split Layout) ---
         right_frame = tk.Frame(content_frame, bg="#ecf0f1")
         right_frame.pack(side=tk.LEFT, fill="both", expand=True)
 
-        # Top Right: Low Stock Alerts
         alert_frame = tk.LabelFrame(right_frame, text="⚠️ Low Stock Alerts", font=("Arial", 14, "bold"), bg="#ecf0f1", fg="#c0392b")
         alert_frame.pack(side=tk.TOP, fill="both", expand=True, pady=(0, 10))
 
-        # --- THE FIX: Container and scrollbar for Alerts ---
         alert_tree_container = tk.Frame(alert_frame, bg="#ecf0f1")
         alert_tree_container.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -78,7 +84,6 @@ class MainDashboard:
         alert_scroll.pack(side=tk.RIGHT, fill="y")
         self.alert_tree.tag_configure('low_stock_danger', foreground='red')
 
-        # Bottom Right: Notice Board & Chat
         notice_frame = tk.LabelFrame(right_frame, text="📢 Lab Notice Board", font=("Arial", 14, "bold"), bg="#ecf0f1", fg="#2980b9")
         notice_frame.pack(side=tk.BOTTOM, fill="x")
 
@@ -86,7 +91,6 @@ class MainDashboard:
         notice_btn_frame.pack(fill="x", padx=10, pady=(5, 0))
         tk.Button(notice_btn_frame, text="⚙️ Manage/Edit", font=("Arial", 9, "bold"), bg="#bdc3c7", fg="#2c3e50", cursor="hand2", command=self.open_notes).pack(side=tk.RIGHT)
 
-        # --- THE FIX: Container and scrollbar for Notice Board ---
         notice_tree_container = tk.Frame(notice_frame, bg="#ecf0f1")
         notice_tree_container.pack(fill="both", expand=True, padx=10, pady=(5, 5))
 
@@ -104,7 +108,6 @@ class MainDashboard:
         self.notice_tree.pack(side=tk.LEFT, fill="both", expand=True)
         notice_scroll.pack(side=tk.RIGHT, fill="y")
 
-        # Chat Typing Box
         chat_frame = tk.Frame(notice_frame, bg="#ecf0f1")
         chat_frame.pack(fill="x", padx=10, pady=(0, 10))
         self.ent_chat = tk.Entry(chat_frame, font=("Arial", 11))
@@ -112,13 +115,48 @@ class MainDashboard:
         self.ent_chat.bind("<Return>", lambda e: self.post_chat_message())
         tk.Button(chat_frame, text="Post", bg="#3498db", fg="white", font=("Arial", 10, "bold"), cursor="hand2", width=8, command=self.post_chat_message).pack(side=tk.RIGHT)
 
-        # --- Status Bar ---
         self.status_var = tk.StringVar(value="System Active")
         status_bar = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#dfe6e9", font=("Arial", 8))
         status_bar.pack(side=tk.BOTTOM, fill="x")
 
-        # Initial Load & Start Background Sync
         self.run_background_sync()
+
+    def ensure_settings_table(self):
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                conn.execute('''CREATE TABLE IF NOT EXISTS Settings (
+                                setting_key TEXT PRIMARY KEY,
+                                setting_value TEXT)''')
+                conn.execute("INSERT OR IGNORE INTO Settings (setting_key, setting_value) VALUES ('theme_color', '#34495e')")
+                conn.execute("INSERT OR IGNORE INTO Settings (setting_key, setting_value) VALUES ('system_title', 'KWH Inventory System')")
+        except Exception as e:
+            print(f"Database setup error: {e}")
+
+    def load_settings(self):
+        settings = {}
+        try:
+            with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                cursor = conn.execute("SELECT setting_key, setting_value FROM Settings")
+                for row in cursor:
+                    settings[row[0]] = row[1]
+        except Exception:
+            pass
+        return settings
+
+    def apply_live_theme(self):
+        self.settings = self.load_settings()
+        self.button_color = self.settings.get('theme_color', '#34495e')
+        self.system_title = self.settings.get('system_title', 'KWH Inventory System')
+
+        self.root.title(f"{self.system_title} - Dashboard ({self.role.upper()})")
+
+        self.header_frame.config(bg=self.button_color)
+        self.title_label.config(text=self.system_title, bg=self.button_color)
+        self.welcome_label.config(bg=self.button_color)
+        self.btn_header_frame.config(bg=self.button_color)
+
+        for btn in self.menu_buttons:
+            btn.config(bg=self.button_color)
 
     def refresh_all_data(self):
         self.load_alerts()
@@ -127,7 +165,6 @@ class MainDashboard:
         self.status_var.set(f"Last Live Update: {now}")
 
     def run_background_sync(self):
-        """Silently syncs the dashboard with the database and tracks its own timer ID."""
         self.refresh_all_data()
         self.sync_id = self.root.after(10000, self.run_background_sync)
 
@@ -143,7 +180,9 @@ class MainDashboard:
             login_root.mainloop()
 
     def create_menu_button(self, parent, text, command):
-        tk.Button(parent, text=text, font=("Arial", 14), width=20, pady=10, bg="#34495e", fg="white", cursor="hand2", command=command).pack(pady=5)
+        btn = tk.Button(parent, text=text, font=("Arial", 14), width=20, pady=10, bg=self.button_color, fg="white", cursor="hand2", command=command)
+        btn.pack(pady=5)
+        self.menu_buttons.append(btn)
 
     def load_alerts(self):
         for i in self.alert_tree.get_children(): self.alert_tree.delete(i)
@@ -165,14 +204,24 @@ class MainDashboard:
                         self.alert_tree.insert("", "end", values=row)
         except Exception as e: print(f"Alert error: {e}")
 
+    # --- UPDATED: Fetch latest 15, reverse them, and scroll to the bottom ---
     def load_dashboard_notes(self):
         for i in self.notice_tree.get_children(): self.notice_tree.delete(i)
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
                 query = "SELECT username, content, strftime('%Y-%m-%d %H:%M:%S', timestamp, 'localtime') FROM Notes ORDER BY timestamp DESC LIMIT 15"
                 cursor = conn.execute(query)
-                for row in cursor:
+                rows = cursor.fetchall()
+                
+                # Reverse the list so the newest message displays at the bottom
+                for row in reversed(rows):
                     self.notice_tree.insert("", "end", values=row)
+            
+            children = self.notice_tree.get_children()
+            if children:
+                # Scroll down to see the final (newest) element
+                self.notice_tree.see(children[-1])
+                
         except Exception as e: print(f"Note error: {e}")
 
     def post_chat_message(self):
@@ -226,3 +275,11 @@ class MainDashboard:
     def open_users(self):
         from user_management import UserManagementScreen
         self.open_single_window("Manage Users", UserManagementScreen)
+
+    def on_settings_updated(self):
+        self.apply_live_theme()
+        self.refresh_all_data()
+
+    def open_system_settings(self):
+        from system_settings import SystemSettingsScreen
+        self.open_single_window("System Settings", SystemSettingsScreen, on_update=self.on_settings_updated)

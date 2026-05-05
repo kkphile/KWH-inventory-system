@@ -32,7 +32,6 @@ class ManageNotesScreen:
 
         self.tree["displaycolumns"] = ("User", "Message", "Time")
         
-        # --- THE FIX: Added Scrollbar ---
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         
@@ -52,6 +51,10 @@ class ManageNotesScreen:
         btn_frame = tk.Frame(self.root, pady=5)
         btn_frame.pack(fill="x", padx=20, pady=(0, 10))
 
+        # Only generate the Clear All button if the user is an admin
+        if self.user_role == 'admin':
+            tk.Button(btn_frame, text="Clear All Messages", bg="#8e44ad", fg="white", font=("Arial", 10, "bold"), width=20, command=self.clear_all_notes).pack(side=tk.LEFT)
+        
         tk.Button(btn_frame, text="Delete Selected Note", bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), width=20, command=self.delete_note).pack(side=tk.RIGHT)
 
         self.load_notes()
@@ -61,10 +64,17 @@ class ManageNotesScreen:
         self.ent_message.delete(0, tk.END) 
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                query = "SELECT note_id, username, content, strftime('%Y-%m-%d %H:%M:%S', timestamp, 'localtime') FROM Notes ORDER BY timestamp DESC"
+                # Queries ASC order to display newest at bottom
+                query = "SELECT note_id, username, content, strftime('%Y-%m-%d %H:%M:%S', timestamp, 'localtime') FROM Notes ORDER BY timestamp ASC"
                 cursor = conn.execute(query)
                 for row in cursor:
                     self.tree.insert("", "end", values=row)
+            
+            children = self.tree.get_children()
+            if children:
+                # Scroll to the bottom-most element
+                self.tree.see(children[-1])
+
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Could not load notes: {e}", parent=self.root)
 
@@ -122,7 +132,30 @@ class ManageNotesScreen:
                 except sqlite3.Error as e:
                     messagebox.showerror("Error", f"Delete failed: {e}", parent=self.root)
 
+    def clear_all_notes(self):
+        # Double-check security: ensures normal users can't run this
+        if self.user_role != 'admin':
+            messagebox.showerror("Permission Denied", "Only administrators can clear the entire Notice Board.", parent=self.root)
+            return
+            
+        if messagebox.askyesno("Clear All Messages", "Are you sure you want to delete ALL messages?\nThis cannot be undone.", parent=self.root):
+            try:
+                with sqlite3.connect("KWH_Inventory_System.db") as conn:
+                    conn.execute("DELETE FROM Notes")
+                
+                # Triggers the visual reload, making the screen instantly blank
+                self.load_notes()
+                
+                # Updates the main dashboard behind this window
+                if self.on_update: self.on_update()
+                
+                # The success popup has been successfully removed from here!
+                
+            except sqlite3.Error as e:
+                messagebox.showerror("Error", f"Failed to clear messages: {e}", parent=self.root)
+
     def role_check(self, author):
+        # Admins can manage everything; Normal users can only manage their own notes
         if self.user_role == 'admin' or self.current_user == author:
             return True
         messagebox.showerror("Permission Denied", "You can only edit or delete your own posts.", parent=self.root)
