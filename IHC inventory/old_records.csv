@@ -1,6 +1,6 @@
 ﻿Barcode,Product,Category,Lot,Expiry Date,Received Date,Quantity
-10001,CD 10,Antibody,123,2028-12-31,2025-01-15,5
-10002,CD 30,Antibody,456,2027-10-10,2025-02-01,2
-10003,Optiview,Detection Kit,789,2026-05-20,2025-03-10,1
-10004,Ultraview,Detection Kit,101,2026-06-15,2025-03-10,10
-12312313,test,test,1231312333,,,
+10001,CD 10,Antibody,123 ,2028-12-31,2025-01-15,5
+10002,CD 30,Antibody,456 ,2027-10-10,2025-02-01,2
+10003,Optiview,Detection Kit,789 ,2026-05-20,2025-03-10,1
+10004,Ultraview,Detection Kit,101 ,2026-06-15,2025-03-10,10
+12312313,test,test,1231312333 ,2028-08-08,2026-06-15,10
