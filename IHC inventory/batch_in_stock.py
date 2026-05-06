@@ -10,16 +10,19 @@ class BatchInStockScreen:
         self.user_id = user_id
         self.on_update = on_update 
         self.root.title("KWH Inventory System - Stock In")
-        self.root.geometry("500x500")
+        
+        self.root.geometry("550x550")
 
         frame = tk.LabelFrame(self.root, text="Rapid Scan In-Stock", padx=20, pady=20)
         frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
         tk.Label(frame, text="1. Set Batch Details:", font=("Arial", 11, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky="w")
         tk.Label(frame, text="Product:").grid(row=1, column=0, pady=5, sticky="e")
         
         self.cat_var = tk.StringVar()
+        
         self.cb_product = ttk.Combobox(frame, textvariable=self.cat_var, width=28, postcommand=self.click_drop_prod) 
-        self.cb_product.grid(row=1, column=1, pady=5)
+        self.cb_product.grid(row=1, column=1, pady=5, sticky="w")
         
         self.cb_product.bind("<<ComboboxSelected>>", self.on_product_type)
         self.cb_product.bind("<KeyRelease>", self.on_product_type)
@@ -31,23 +34,24 @@ class BatchInStockScreen:
         self.all_products = [] 
         self.load_products()
         
-        tk.Label(frame, text="Lot Number:").grid(row=2, column=0, pady=5, sticky="e")
-        self.ent_lot = tk.Entry(frame, width=31)
-        self.ent_lot.grid(row=2, column=1, pady=5)
+        tk.Label(frame, text="Lot Number (Optional):").grid(row=2, column=0, pady=5, sticky="e")
         
-        tk.Label(frame, text="Expiry Date (YYYY-MM-DD):").grid(row=3, column=0, pady=5, sticky="e")
+        self.ent_lot = tk.Entry(frame, width=31)
+        self.ent_lot.grid(row=2, column=1, pady=5, sticky="w")
+        
+        tk.Label(frame, text="Expiry Date (YYYY-MM-DD, Optional):").grid(row=3, column=0, pady=5, sticky="e")
         self.ent_exp = tk.Entry(frame, width=31)
-        self.ent_exp.grid(row=3, column=1, pady=5)
+        self.ent_exp.grid(row=3, column=1, pady=5, sticky="w")
         
         tk.Label(frame, text="Received Date:").grid(row=4, column=0, pady=5, sticky="e")
         self.ent_recv = tk.Entry(frame, width=31)
         self.ent_recv.insert(0, datetime.date.today().strftime("%Y-%m-%d"))
-        self.ent_recv.grid(row=4, column=1, pady=5)
+        self.ent_recv.grid(row=4, column=1, pady=5, sticky="w")
         
         tk.Label(frame, text="Quantity (Per Scan):").grid(row=5, column=0, pady=5, sticky="e")
         self.ent_qty = tk.Entry(frame, width=31)
         self.ent_qty.insert(0, "1")
-        self.ent_qty.grid(row=5, column=1, pady=5)
+        self.ent_qty.grid(row=5, column=1, pady=5, sticky="w")
         
         ttk.Separator(frame, orient='horizontal').grid(row=6, column=0, columnspan=2, sticky='ew', pady=15)
         tk.Label(frame, text="2. Scan Barcode:", font=("Arial", 11, "bold")).grid(row=7, column=0, columnspan=2, pady=(0, 5), sticky="w")
@@ -56,6 +60,7 @@ class BatchInStockScreen:
         self.ent_barcode.grid(row=8, column=0, columnspan=2, pady=5)
         self.ent_barcode.focus()
         self.ent_barcode.bind("<Return>", lambda e: self.receive_item())
+        
         tk.Button(frame, text="Add", bg="#2ecc71", fg="white", font=("Arial", 10, "bold"), command=self.receive_item).grid(row=9, column=0, columnspan=2, pady=15)
 
     def load_products(self):
@@ -122,12 +127,11 @@ class BatchInStockScreen:
             self.ent_barcode.delete(0, tk.END)
             return
             
-        if not all([prod, lot, raw_exp, raw_recv, raw_qty]):
-            messagebox.showwarning("Setup Error", "Fill all Batch Details.")
+        if not all([prod, raw_recv, raw_qty]):
+            messagebox.showwarning("Setup Error", "Product, Received Date, and Quantity are mandatory.")
             self.ent_barcode.delete(0, tk.END)
             return
 
-        # Format and validate dates
         exp = is_valid_date(raw_exp, self.root)
         recv = is_valid_date(raw_recv, self.root)
 
@@ -135,14 +139,35 @@ class BatchInStockScreen:
             self.ent_barcode.delete(0, tk.END)
             return
             
+        if not lot:
+            lot = "/"
+        if not exp:
+            exp = "/"
+            
         try:
             qty = int(raw_qty)
             if qty <= 0: raise ValueError
             cat_id = self.cat_map[prod]
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
                 cursor = conn.cursor()
+
+                # --- THE STRICT BARCODE INTEGRITY CHECK ---
+                cursor.execute("SELECT catalog_id FROM Inventory WHERE barcode=? LIMIT 1", (barcode,))
+                existing_cat = cursor.fetchone()
+                
+                if existing_cat and existing_cat[0] != cat_id:
+                    cursor.execute("SELECT product_name FROM Catalog WHERE catalog_id=?", (existing_cat[0],))
+                    existing_prod_name = cursor.fetchone()[0]
+                    messagebox.showerror(
+                        "Barcode Conflict", 
+                        f"🛑 Integrity Error 🛑\n\nThis barcode is already firmly assigned to:\n[{existing_prod_name}]\n\nDifferent products must have different barcodes.", 
+                        parent=self.root
+                    )
+                    self.ent_barcode.delete(0, tk.END)
+                    return
+                # ------------------------------------------
+
                 for _ in range(qty):
-                    # We now insert the correctly formatted 'exp' and 'recv' variables
                     cursor.execute("INSERT INTO Inventory (barcode, catalog_id, lot_number, expiry_date, received_date, status) VALUES (?, ?, ?, ?, ?, 'In_Stock')",
                                     (barcode, cat_id, lot, exp, recv))
                     item_id = cursor.lastrowid

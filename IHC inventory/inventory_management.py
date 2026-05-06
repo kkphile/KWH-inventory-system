@@ -22,19 +22,26 @@ class InventoryScreen:
         
         tk.Label(filter_frame, text="Category:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.filter_cat_var = tk.StringVar()
-        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=15, postcommand=self.click_drop_cat)
+        self.combo_filter_cat = ttk.Combobox(filter_frame, textvariable=self.filter_cat_var, width=13, postcommand=self.click_drop_cat)
         self.combo_filter_cat.pack(side=tk.LEFT, padx=(5, 10))
         self.combo_filter_cat.bind("<<ComboboxSelected>>", self.on_category_select)
         self.combo_filter_cat.bind("<KeyRelease>", self.on_category_select)
         
         tk.Label(filter_frame, text="Product:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.filter_prod_var = tk.StringVar()
-        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=20, postcommand=self.click_drop_prod)
+        self.combo_filter_prod = ttk.Combobox(filter_frame, textvariable=self.filter_prod_var, width=18, postcommand=self.click_drop_prod)
         self.combo_filter_prod.pack(side=tk.LEFT, padx=(5, 10))
         self.combo_filter_prod.bind("<<ComboboxSelected>>", self.on_product_type)
         self.combo_filter_prod.bind("<KeyRelease>", self.on_product_type)
+
+        tk.Label(filter_frame, text="Status:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        self.filter_status_var = tk.StringVar()
+        self.combo_filter_status = ttk.Combobox(filter_frame, textvariable=self.filter_status_var, values=["All", "In_Stock", "Consumed", "Discarded", "Flagged"], state="readonly", width=10)
+        self.combo_filter_status.set("All")
+        self.combo_filter_status.pack(side=tk.LEFT, padx=(5, 10))
+        self.combo_filter_status.bind("<<ComboboxSelected>>", lambda e: self.load_data())
         
-        tk.Label(filter_frame, text="Barcode Search:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Barcode:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.ent_search = tk.Entry(filter_frame, width=15)
         self.ent_search.pack(side=tk.LEFT, padx=(5, 15))
         self.ent_search.bind("<KeyRelease>", lambda e: self.load_data())
@@ -65,7 +72,9 @@ class InventoryScreen:
         self.tree.column("Status", width=100, anchor="center")
         
         self.tree["displaycolumns"] = ("Barcode", "Product", "Lot", "Expiry Date", "Received Date", "Status")
-        
+
+        self.tree.tag_configure('flagged', background='#ffb3b3')
+
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side=tk.LEFT, fill="both", expand=True)
@@ -106,7 +115,7 @@ class InventoryScreen:
             tk.Label(form_frame, text="Status:").grid(row=1, column=4, padx=5, pady=5, sticky="e")
             self.status_var = tk.StringVar()
             self.combo_status = ttk.Combobox(form_frame, textvariable=self.status_var, state="readonly", width=13)
-            self.combo_status['values'] = ("In_Stock", "Consumed", "Discarded")
+            self.combo_status['values'] = ("In_Stock", "Consumed", "Discarded", "Flagged")
             self.combo_status.grid(row=1, column=5, padx=5, pady=5)
             
             btn_frame = tk.Frame(form_frame)
@@ -270,6 +279,7 @@ class InventoryScreen:
     def clear_filters(self):
         self.combo_filter_cat.set("All Categories")
         self.combo_filter_prod.set("All Products")
+        self.combo_filter_status.set("All")
         self.ent_search.delete(0, tk.END)
         self.cat_listbox.place_forget()
         self.prod_listbox.place_forget()
@@ -283,6 +293,7 @@ class InventoryScreen:
 
         f_cat = self.filter_cat_var.get().strip()
         f_prod = self.filter_prod_var.get().strip()
+        f_status = self.filter_status_var.get().strip()
         s_txt = self.ent_search.get().strip().lower()
 
         try:
@@ -292,7 +303,8 @@ class InventoryScreen:
                     self.combo_edit_prod['values'] = [row[0] for row in c_all_prods]
 
                 query = """SELECT i.item_id, i.barcode, c.product_name, i.lot_number,
-                            strftime('%Y-%m-%d', i.expiry_date), strftime('%Y-%m-%d', i.received_date), i.status
+                            IFNULL(strftime('%Y-%m-%d', i.expiry_date), i.expiry_date), 
+                            IFNULL(strftime('%Y-%m-%d', i.received_date), i.received_date), i.status
                             FROM Inventory i JOIN Catalog c ON i.catalog_id = c.catalog_id
                             WHERE 1=1"""
                 params = []
@@ -303,14 +315,20 @@ class InventoryScreen:
                 if f_prod and f_prod != "All Products":
                     query += " AND c.product_name LIKE ?"
                     params.append(f"%{f_prod}%")
+                if f_status and f_status != "All":
+                    query += " AND i.status = ?"
+                    params.append(f_status)
                 if s_txt:
                     query += " AND LOWER(i.barcode) LIKE ?"
                     params.append(f"%{s_txt}%")
                     
-                query += " ORDER BY i.status DESC, i.expiry_date ASC"
+                query += " ORDER BY i.status DESC, i.received_date ASC"
                 
                 for row in conn.execute(query, params): 
-                    self.tree.insert("", "end", values=row)
+                    if row[6] == 'Flagged':
+                        self.tree.insert("", "end", values=row, tags=('flagged',))
+                    else:
+                        self.tree.insert("", "end", values=row)
                     self.original_view_data.append(row)
                     
             for c in self.sort_states:
@@ -332,7 +350,11 @@ class InventoryScreen:
         if nxt == 0:
             self.tree.heading(col, text=col)
             for i in self.tree.get_children(): self.tree.delete(i)
-            for row in self.original_view_data: self.tree.insert("", "end", values=row)
+            for row in self.original_view_data: 
+                if row[6] == 'Flagged':
+                    self.tree.insert("", "end", values=row, tags=('flagged',))
+                else:
+                    self.tree.insert("", "end", values=row)
         elif nxt == 1:
             self.tree.heading(col, text=f"{col} ▲")
             self.sort_tree_data(col, reverse=False)
@@ -385,7 +407,6 @@ class InventoryScreen:
         raw_exp = self.ent_exp.get().strip()
         raw_recv = self.ent_recv.get().strip()
         
-        # Format the dates
         new_exp = is_valid_date(raw_exp, self.root)
         new_recv = is_valid_date(raw_recv, self.root)
         
@@ -414,13 +435,28 @@ class InventoryScreen:
                 timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                    cat_res = conn.execute("SELECT catalog_id FROM Catalog WHERE product_name=?", (new_prod,)).fetchone()
+                    cursor = conn.cursor()
+                    cat_res = cursor.execute("SELECT catalog_id FROM Catalog WHERE product_name=?", (new_prod,)).fetchone()
                     if not cat_res:
                         messagebox.showwarning("Error", "Selected product does not exist in the Catalog.", parent=self.root)
                         return
                     new_cat_id = cat_res[0]
                     
-                    # Passing the new nicely formatted dates to the database
+                    # --- THE STRICT BARCODE INTEGRITY CHECK ---
+                    cursor.execute("SELECT catalog_id FROM Inventory WHERE barcode=? AND item_id != ? LIMIT 1", (new_barcode, item_id))
+                    existing_cat = cursor.fetchone()
+                    
+                    if existing_cat and existing_cat[0] != new_cat_id:
+                        cursor.execute("SELECT product_name FROM Catalog WHERE catalog_id=?", (existing_cat[0],))
+                        existing_prod_name = cursor.fetchone()[0]
+                        messagebox.showerror(
+                            "Barcode Conflict", 
+                            f"🛑 Integrity Error 🛑\n\nBarcode '{new_barcode}' is strictly assigned to:\n[{existing_prod_name}]\n\nYou cannot mix different products under the same barcode.", 
+                            parent=self.root
+                        )
+                        return
+                    # ------------------------------------------
+                    
                     conn.execute("UPDATE Inventory SET barcode=?, catalog_id=?, lot_number=?, expiry_date=?, received_date=?, status=? WHERE item_id=?",
                                   (new_barcode, new_cat_id, new_lot, new_exp, new_recv, new_status, item_id))
                     

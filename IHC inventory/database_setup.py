@@ -8,11 +8,19 @@ def setup_database():
     conn = sqlite3.connect("KWH_Inventory_System.db")
     cursor = conn.cursor()
 
+    # --- THE FIX: We added 'is_active INTEGER DEFAULT 1' to the native creation script ---
     cursor.execute('''CREATE TABLE IF NOT EXISTS Users (
                         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         username TEXT UNIQUE NOT NULL,
                         password_hash TEXT NOT NULL,
-                        role TEXT NOT NULL)''')
+                        role TEXT NOT NULL,
+                        is_active INTEGER DEFAULT 1)''')
+
+    # Safety Check: If the table was already created without the column, this adds it safely
+    cursor.execute("PRAGMA table_info(Users)")
+    columns = [info[1] for info in cursor.fetchall()]
+    if 'is_active' not in columns:
+        cursor.execute("ALTER TABLE Users ADD COLUMN is_active INTEGER DEFAULT 1")
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS Catalog (
                         catalog_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,8 +54,9 @@ def setup_database():
                         content TEXT NOT NULL,
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
-    cursor.execute("INSERT OR IGNORE INTO Users (username, password_hash, role) VALUES (?, ?, ?)", 
-                   ('admin', hash_password('password123'), 'admin'))
+    # Explicitly creating the default admin with the is_active flag set to 1
+    cursor.execute("INSERT OR IGNORE INTO Users (username, password_hash, role, is_active) VALUES (?, ?, ?, 1)",
+                    ('admin', hash_password('password123'), 'admin'))
 
     conn.commit()
     conn.close()
