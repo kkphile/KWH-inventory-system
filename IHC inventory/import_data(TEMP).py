@@ -46,14 +46,15 @@ def import_data():
                 
                 for row_num, row in enumerate(reader, start=2):
                     
-                    barcode = row.get('Barcode', '').strip()
+                    # UPDATED: Account for both old and new CSV header names
+                    barcode = row.get('Barcode/Lot number', row.get('Barcode', '')).strip()
                     product_name = row.get('Product', '').strip()
                     category = row.get('Category', '').strip()
                     
-                    # Handle empty Lot Numbers
-                    lot = row.get('Lot', '').strip()
-                    if not lot:
-                        lot = "/"
+                    # UPDATED: Account for both old and new CSV header names
+                    catalog_num = row.get('Catalog Number', row.get('Lot', '')).strip()
+                    if not catalog_num:
+                        catalog_num = "/"
                     
                     raw_expiry = row.get('Expiry Date', '').strip()
                     raw_received = row.get('Received Date', '').strip()
@@ -65,7 +66,7 @@ def import_data():
                         quantity = 1 
                     
                     if not barcode or not product_name:
-                        print(f"Skipping row {row_num}: Missing Barcode or Product Name.")
+                        print(f"Skipping row {row_num}: Missing Barcode/Lot number or Product Name.")
                         continue
                         
                     # Format dates or replace with "/" if empty
@@ -87,16 +88,19 @@ def import_data():
                         catalog_id = cursor.lastrowid
                         
                     for _ in range(quantity):
+                        # UPDATED: Inserting into the new column names
                         cursor.execute("""
-                            INSERT INTO Inventory (barcode, catalog_id, lot_number, expiry_date, received_date, status)
+                            INSERT INTO Inventory (barcode_lot_number, catalog_id, catalog_number, expiry_date, received_date, status)
                             VALUES (?, ?, ?, ?, ?, 'In_Stock')
-                        """, (barcode, catalog_id, lot, expiry, received))
+                        """, (barcode, catalog_id, catalog_num, expiry, received))
                         
                         item_id = cursor.lastrowid
                         
                         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # UPDATED: Inserting into the new column name
                         cursor.execute("""
-                            INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp)
+                            INSERT INTO AuditLog (item_id, barcode_lot_number, user_id, action, timestamp)
                             VALUES (?, ?, ?, 'Legacy Import', ?)
                         """, (item_id, barcode, 1, timestamp)) 
                     

@@ -8,7 +8,6 @@ def setup_database():
     conn = sqlite3.connect("KWH_Inventory_System.db")
     cursor = conn.cursor()
 
-    # --- THE FIX: We added 'is_active INTEGER DEFAULT 1' to the native creation script ---
     cursor.execute('''CREATE TABLE IF NOT EXISTS Users (
                         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         username TEXT UNIQUE NOT NULL,
@@ -16,7 +15,6 @@ def setup_database():
                         role TEXT NOT NULL,
                         is_active INTEGER DEFAULT 1)''')
 
-    # Safety Check: If the table was already created without the column, this adds it safely
     cursor.execute("PRAGMA table_info(Users)")
     columns = [info[1] for info in cursor.fetchall()]
     if 'is_active' not in columns:
@@ -28,20 +26,22 @@ def setup_database():
                         category TEXT NOT NULL,
                         low_stock_threshold INTEGER DEFAULT 0)''')
 
+    # UPDATED: barcode_lot_number and catalog_number
     cursor.execute('''CREATE TABLE IF NOT EXISTS Inventory (
                         item_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        barcode TEXT,
+                        barcode_lot_number TEXT,
                         catalog_id INTEGER,
-                        lot_number TEXT,
+                        catalog_number TEXT,
                         expiry_date DATE,
                         received_date DATE,
                         status TEXT DEFAULT 'In_Stock', 
                         FOREIGN KEY(catalog_id) REFERENCES Catalog(catalog_id))''')
 
+    # UPDATED: barcode_lot_number
     cursor.execute('''CREATE TABLE IF NOT EXISTS AuditLog (
                         log_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         item_id INTEGER,
-                        barcode TEXT,
+                        barcode_lot_number TEXT,
                         user_id INTEGER,
                         action TEXT,
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -54,7 +54,6 @@ def setup_database():
                         content TEXT NOT NULL,
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
-    # Explicitly creating the default admin with the is_active flag set to 1
     cursor.execute("INSERT OR IGNORE INTO Users (username, password_hash, role, is_active) VALUES (?, ?, ?, 1)",
                     ('admin', hash_password('password123'), 'admin'))
 

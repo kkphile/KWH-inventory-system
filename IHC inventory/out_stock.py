@@ -26,7 +26,7 @@ class OutStockScreen:
         scan_frame = tk.LabelFrame(self.root, text="Step 2 (Method A): Rapid Barcode Scan", padx=20, pady=10)
         scan_frame.pack(fill="x", padx=20, pady=5)
         
-        tk.Label(scan_frame, text="Scan Barcode:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, pady=5)
+        tk.Label(scan_frame, text="Scan Barcode/Lot number:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, pady=5)
         self.ent_barcode = tk.Entry(scan_frame, width=25, font=("Arial", 12))
         self.ent_barcode.pack(side=tk.LEFT, padx=15, pady=5)
         self.ent_barcode.focus() 
@@ -69,19 +69,19 @@ class OutStockScreen:
         self.combo_filter_prod.bind("<FocusOut>", lambda e: self.prod_listbox.after(150, self.prod_listbox.place_forget))
 
         # Treeview setup
-        self.tree = ttk.Treeview(list_frame, columns=("ID", "Barcode", "Product", "Lot", "Expiry Date", "Received Date"), show='headings')
+        self.tree = ttk.Treeview(list_frame, columns=("ID", "Barcode/Lot number", "Product", "Catalog Number", "Expiry Date", "Received Date"), show='headings')
         
-        self.tree["displaycolumns"] = ("Barcode", "Product", "Lot", "Expiry Date", "Received Date")
+        self.tree["displaycolumns"] = ("Barcode/Lot number", "Product", "Catalog Number", "Expiry Date", "Received Date")
 
-        self.tree.heading("Barcode", text="Barcode")
+        self.tree.heading("Barcode/Lot number", text="Barcode/Lot number")
         self.tree.heading("Product", text="Product")
-        self.tree.heading("Lot", text="Lot Number")
+        self.tree.heading("Catalog Number", text="Catalog Number")
         self.tree.heading("Expiry Date", text="Expiry Date")
         self.tree.heading("Received Date", text="Received Date")
 
-        self.tree.column("Barcode", width=120, anchor="center")
+        self.tree.column("Barcode/Lot number", width=120, anchor="center")
         self.tree.column("Product", width=200, anchor="w")
-        self.tree.column("Lot", width=100, anchor="center")
+        self.tree.column("Catalog Number", width=100, anchor="center")
         self.tree.column("Expiry Date", width=100, anchor="center")
         self.tree.column("Received Date", width=100, anchor="center")
 
@@ -227,7 +227,7 @@ class OutStockScreen:
 
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
-                query = """SELECT i.item_id, i.barcode, c.product_name, i.lot_number,
+                query = """SELECT i.item_id, i.barcode_lot_number, c.product_name, i.catalog_number,
                             IFNULL(strftime('%Y-%m-%d', i.expiry_date), i.expiry_date),
                             IFNULL(strftime('%Y-%m-%d', i.received_date), i.received_date)
                             FROM Inventory i JOIN Catalog c ON i.catalog_id = c.catalog_id
@@ -241,8 +241,7 @@ class OutStockScreen:
                     query += " AND c.product_name LIKE ?"
                     params.append(f"%{f_prod}%")
                     
-                # --- THE FIX: Changed default sort to received_date ascending ---
-                query += " ORDER BY i.received_date ASC"
+                query += " ORDER BY i.received_date DESC, i.item_id DESC"
                 
                 for row in conn.execute(query, params): 
                     self.tree.insert("", "end", values=row)
@@ -262,7 +261,7 @@ class OutStockScreen:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    SELECT item_id, lot_number, expiry_date, barcode 
+                    SELECT item_id, catalog_number, expiry_date, barcode_lot_number 
                     FROM Inventory WHERE catalog_id=? AND status='In_Stock'
                 """, (catalog_id,))
                 rows = cursor.fetchall()
@@ -290,8 +289,8 @@ class OutStockScreen:
 
                 # FEFO Check
                 if selected_item['dt'] > oldest_item['dt']:
-                    warn_msg = (f"  FEFO ALERT!  \n\nYou are consuming: Lot {selected_item['lot']} (Exp: {selected_item['exp']})\n"
-                               f"Older stock exists: Lot {oldest_item['lot']} (Exp: {oldest_item['exp']})\n\n"
+                    warn_msg = (f"  FEFO ALERT!  \n\nYou are consuming: Catalog Number {selected_item['lot']} (Exp: {selected_item['exp']})\n"
+                               f"Older stock exists: Catalog Number {oldest_item['lot']} (Exp: {oldest_item['exp']})\n\n"
                                f"Do you want to bypass the older stock?")
                     if not messagebox.askyesno("Confirm Override", warn_msg, icon='warning', parent=self.root):
                         self.ent_barcode.delete(0, tk.END)
@@ -300,7 +299,7 @@ class OutStockScreen:
                 timestamp = f"{out_date} {datetime.datetime.now().strftime('%H:%M:%S')}"
 
                 cursor.execute("UPDATE Inventory SET status='Consumed' WHERE item_id=?", (selected_item['id'],))
-                cursor.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'Consumed', ?)",
+                cursor.execute("INSERT INTO AuditLog (item_id, barcode_lot_number, user_id, action, timestamp) VALUES (?, ?, ?, 'Consumed', ?)",
                                 (selected_item['id'], barcode_val, self.user_id, timestamp))
                 
                 cursor.execute("SELECT product_name FROM Catalog WHERE catalog_id=?", (catalog_id,))
@@ -313,7 +312,7 @@ class OutStockScreen:
                 
             self.load_data() 
             
-            success_msg = f"Successfully consumed!\n\nProduct: {product_name}\nLot Number: {selected_item['lot']}"
+            success_msg = f"Successfully consumed!\n\nProduct: {product_name}\nCatalog Number: {selected_item['lot']}"
             messagebox.showinfo("Success", success_msg, parent=self.root)
             
             self.ent_barcode.delete(0, tk.END)
@@ -330,7 +329,7 @@ class OutStockScreen:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
                 cursor = conn.cursor()
                 
-                cursor.execute("SELECT status FROM Inventory WHERE barcode=?", (barcode_input,))
+                cursor.execute("SELECT status FROM Inventory WHERE barcode_lot_number=?", (barcode_input,))
                 status_results = cursor.fetchall()
                 
                 if not status_results:
@@ -348,7 +347,7 @@ class OutStockScreen:
                     self.ent_barcode.delete(0, tk.END)
                     return
 
-                cursor.execute("SELECT item_id, catalog_id FROM Inventory WHERE barcode=? AND status='In_Stock' ORDER BY expiry_date ASC LIMIT 1", (barcode_input,))
+                cursor.execute("SELECT item_id, catalog_id FROM Inventory WHERE barcode_lot_number=? AND status='In_Stock' ORDER BY expiry_date ASC LIMIT 1", (barcode_input,))
                 res = cursor.fetchone()
                 
                 if not res:

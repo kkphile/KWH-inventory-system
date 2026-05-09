@@ -33,7 +33,7 @@ class AuditLogScreen:
         self.combo_filter_prod.bind("<<ComboboxSelected>>", self.on_product_type)
         self.combo_filter_prod.bind("<KeyRelease>", self.on_product_type)
         
-        tk.Label(filter_frame, text="Barcode:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(filter_frame, text="Barcode/Lot number:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.ent_search = tk.Entry(filter_frame, width=18)
         self.ent_search.grid(row=1, column=1, padx=5, pady=5)
         self.ent_search.bind("<KeyRelease>", lambda e: self.load_logs())
@@ -62,15 +62,15 @@ class AuditLogScreen:
         
         frame = tk.LabelFrame(self.root, text="System Action History", padx=10, pady=10)
         frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        self.tree = ttk.Treeview(frame, columns=("LogID", "Barcode", "Product", "User", "Action", "Timestamp"), show='headings')
-        self.tree.heading("Barcode", text="Barcode")
+        self.tree = ttk.Treeview(frame, columns=("LogID", "Barcode/Lot number", "Product", "User", "Action", "Timestamp"), show='headings')
+        self.tree.heading("Barcode/Lot number", text="Barcode/Lot number")
         self.tree.heading("Product", text="Product Name")
         self.tree.heading("User", text="Performed By")
         self.tree.heading("Action", text="Action Taken")
         self.tree.heading("Timestamp", text="Date & Time")
         
-        self.tree["displaycolumns"] = ("Barcode", "Product", "User", "Action", "Timestamp")
-        self.tree.column("Barcode", width=120)
+        self.tree["displaycolumns"] = ("Barcode/Lot number", "Product", "User", "Action", "Timestamp")
+        self.tree.column("Barcode/Lot number", width=120)
         self.tree.column("Product", width=220)
         self.tree.column("User", width=100)
         self.tree.column("Action", width=100)
@@ -247,7 +247,7 @@ class AuditLogScreen:
         try:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
                 query = """
-                    SELECT a.log_id, a.barcode, COALESCE(c.product_name, 'Unknown/Deleted'), u.username, a.action, a.timestamp
+                    SELECT a.log_id, a.barcode_lot_number, COALESCE(c.product_name, 'Unknown/Deleted'), u.username, a.action, a.timestamp
                     FROM AuditLog a
                     LEFT JOIN Users u ON a.user_id = u.user_id
                     LEFT JOIN Inventory i ON a.item_id = i.item_id
@@ -265,7 +265,7 @@ class AuditLogScreen:
                     query += " AND c.product_name LIKE ?"
                     params.append(f"%{f_prod}%")
                 if f_search:
-                    query += " AND LOWER(a.barcode) LIKE ?"
+                    query += " AND LOWER(a.barcode_lot_number) LIKE ?"
                     params.append(f"%{f_search}%")
                 if start_date:
                     query += " AND date(a.timestamp) >= ?"

@@ -14,7 +14,7 @@ class InventoryScreen:
         
         self.root.title("KWH Inventory System - Inventory Management")
         self.root.geometry("1100x650")
-        self.sort_states = {"Barcode": 0, "Product": 0, "Lot": 0, "Expiry Date": 0, "Received Date": 0, "Status": 0}
+        self.sort_states = {"Barcode/Lot number": 0, "Product": 0, "Catalog Number": 0, "Expiry Date": 0, "Received Date": 0, "Status": 0}
         self.original_view_data = [] 
 
         filter_frame = tk.Frame(self.root, pady=10, padx=20)
@@ -41,7 +41,7 @@ class InventoryScreen:
         self.combo_filter_status.pack(side=tk.LEFT, padx=(5, 10))
         self.combo_filter_status.bind("<<ComboboxSelected>>", lambda e: self.load_data())
         
-        tk.Label(filter_frame, text="Barcode:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Barcode/Lot number:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
         self.ent_search = tk.Entry(filter_frame, width=15)
         self.ent_search.pack(side=tk.LEFT, padx=(5, 15))
         self.ent_search.bind("<KeyRelease>", lambda e: self.load_data())
@@ -60,18 +60,18 @@ class InventoryScreen:
         list_frame = tk.LabelFrame(self.root, text="Current Physical Stock & History", padx=10, pady=10)
         list_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        self.tree = ttk.Treeview(list_frame, columns=("ID", "Barcode", "Product", "Lot", "Expiry Date", "Received Date", "Status"), show='headings')
+        self.tree = ttk.Treeview(list_frame, columns=("ID", "Barcode/Lot number", "Product", "Catalog Number", "Expiry Date", "Received Date", "Status"), show='headings')
         for col in self.tree["columns"][1:]: 
             self.tree.heading(col, text=col, command=lambda c=col: self.cycle_sort(c))
             
-        self.tree.column("Barcode", width=120, anchor="center")
+        self.tree.column("Barcode/Lot number", width=120, anchor="center")
         self.tree.column("Product", width=120, anchor="center") 
-        self.tree.column("Lot", width=120, anchor="center")
+        self.tree.column("Catalog Number", width=120, anchor="center")
         self.tree.column("Expiry Date", width=120, anchor="center")
         self.tree.column("Received Date", width=120, anchor="center")
         self.tree.column("Status", width=100, anchor="center")
         
-        self.tree["displaycolumns"] = ("Barcode", "Product", "Lot", "Expiry Date", "Received Date", "Status")
+        self.tree["displaycolumns"] = ("Barcode/Lot number", "Product", "Catalog Number", "Expiry Date", "Received Date", "Status")
 
         self.tree.tag_configure('flagged', background='#ffb3b3')
 
@@ -89,7 +89,7 @@ class InventoryScreen:
             form_frame = tk.LabelFrame(self.root, text="Edit Specific Item", padx=10, pady=10)
             form_frame.pack(fill="x", padx=20, pady=15)
             
-            tk.Label(form_frame, text="Barcode:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+            tk.Label(form_frame, text="Barcode/Lot number:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
             self.ent_barcode_edit = tk.Entry(form_frame, width=18)
             self.ent_barcode_edit.grid(row=0, column=1, padx=5, pady=5)
             
@@ -100,7 +100,7 @@ class InventoryScreen:
             self.combo_edit_prod.bind("<KeyRelease>", self.on_edit_product_type)
             self.combo_edit_prod.bind("<FocusOut>", lambda e: self.edit_prod_listbox.after(150, self.edit_prod_listbox.place_forget))
             
-            tk.Label(form_frame, text="Lot Number:").grid(row=0, column=4, padx=5, pady=5, sticky="e")
+            tk.Label(form_frame, text="Catalog Number:").grid(row=0, column=4, padx=5, pady=5, sticky="e")
             self.ent_lot = tk.Entry(form_frame, width=15)
             self.ent_lot.grid(row=0, column=5, padx=5, pady=5)
             
@@ -302,7 +302,7 @@ class InventoryScreen:
                     c_all_prods = conn.execute("SELECT DISTINCT product_name FROM Catalog ORDER BY product_name ASC")
                     self.combo_edit_prod['values'] = [row[0] for row in c_all_prods]
 
-                query = """SELECT i.item_id, i.barcode, c.product_name, i.lot_number,
+                query = """SELECT i.item_id, i.barcode_lot_number, c.product_name, i.catalog_number,
                             IFNULL(strftime('%Y-%m-%d', i.expiry_date), i.expiry_date), 
                             IFNULL(strftime('%Y-%m-%d', i.received_date), i.received_date), i.status
                             FROM Inventory i JOIN Catalog c ON i.catalog_id = c.catalog_id
@@ -319,10 +319,10 @@ class InventoryScreen:
                     query += " AND i.status = ?"
                     params.append(f_status)
                 if s_txt:
-                    query += " AND LOWER(i.barcode) LIKE ?"
+                    query += " AND LOWER(i.barcode_lot_number) LIKE ?"
                     params.append(f"%{s_txt}%")
                     
-                query += " ORDER BY i.status DESC, i.received_date ASC"
+                query += " ORDER BY i.received_date DESC, i.item_id DESC"
                 
                 for row in conn.execute(query, params): 
                     if row[6] == 'Flagged':
@@ -338,6 +338,8 @@ class InventoryScreen:
         except Exception as e: messagebox.showerror("Error", str(e), parent=self.root)
 
     def cycle_sort(self, col):
+        if col == "Status": return
+        
         curr = self.sort_states[col]
         nxt = (curr + 1) % 3
         
@@ -443,7 +445,7 @@ class InventoryScreen:
                     new_cat_id = cat_res[0]
                     
                     # --- THE STRICT BARCODE INTEGRITY CHECK ---
-                    cursor.execute("SELECT catalog_id FROM Inventory WHERE barcode=? AND item_id != ? LIMIT 1", (new_barcode, item_id))
+                    cursor.execute("SELECT catalog_id FROM Inventory WHERE barcode_lot_number=? AND item_id != ? LIMIT 1", (new_barcode, item_id))
                     existing_cat = cursor.fetchone()
                     
                     if existing_cat and existing_cat[0] != new_cat_id:
@@ -457,11 +459,11 @@ class InventoryScreen:
                         return
                     # ------------------------------------------
                     
-                    conn.execute("UPDATE Inventory SET barcode=?, catalog_id=?, lot_number=?, expiry_date=?, received_date=?, status=? WHERE item_id=?",
+                    conn.execute("UPDATE Inventory SET barcode_lot_number=?, catalog_id=?, catalog_number=?, expiry_date=?, received_date=?, status=? WHERE item_id=?",
                                   (new_barcode, new_cat_id, new_lot, new_exp, new_recv, new_status, item_id))
                     
                     for action in actions_to_log:
-                        conn.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, ?, ?)",
+                        conn.execute("INSERT INTO AuditLog (item_id, barcode_lot_number, user_id, action, timestamp) VALUES (?, ?, ?, ?, ?)",
                                       (item_id, new_barcode, self.user_id, action, timestamp_str))
                                   
                 self.load_data()
@@ -490,7 +492,7 @@ class InventoryScreen:
                 
                 with sqlite3.connect("KWH_Inventory_System.db") as conn:
                     conn.execute("DELETE FROM Inventory WHERE item_id=?", (item_id,))
-                    conn.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'Deleted', ?)",
+                    conn.execute("INSERT INTO AuditLog (item_id, barcode_lot_number, user_id, action, timestamp) VALUES (?, ?, ?, 'Deleted', ?)",
                                   (item_id, barcode_val, self.user_id, timestamp_str))
                                   
                 self.load_data()

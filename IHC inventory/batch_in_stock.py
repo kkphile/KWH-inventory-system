@@ -34,7 +34,7 @@ class BatchInStockScreen:
         self.all_products = [] 
         self.load_products()
         
-        tk.Label(frame, text="Lot Number (Optional):").grid(row=2, column=0, pady=5, sticky="e")
+        tk.Label(frame, text="Catalog Number (Optional):").grid(row=2, column=0, pady=5, sticky="e")
         
         self.ent_lot = tk.Entry(frame, width=31)
         self.ent_lot.grid(row=2, column=1, pady=5, sticky="w")
@@ -54,7 +54,7 @@ class BatchInStockScreen:
         self.ent_qty.grid(row=5, column=1, pady=5, sticky="w")
         
         ttk.Separator(frame, orient='horizontal').grid(row=6, column=0, columnspan=2, sticky='ew', pady=15)
-        tk.Label(frame, text="2. Scan Barcode:", font=("Arial", 11, "bold")).grid(row=7, column=0, columnspan=2, pady=(0, 5), sticky="w")
+        tk.Label(frame, text="2. Scan Barcode/Lot number:", font=("Arial", 11, "bold")).grid(row=7, column=0, columnspan=2, pady=(0, 5), sticky="w")
         
         self.ent_barcode = tk.Entry(frame, width=30, font=("Arial", 14))
         self.ent_barcode.grid(row=8, column=0, columnspan=2, pady=5)
@@ -151,8 +151,7 @@ class BatchInStockScreen:
             with sqlite3.connect("KWH_Inventory_System.db") as conn:
                 cursor = conn.cursor()
 
-                # --- THE STRICT BARCODE INTEGRITY CHECK ---
-                cursor.execute("SELECT catalog_id FROM Inventory WHERE barcode=? LIMIT 1", (barcode,))
+                cursor.execute("SELECT catalog_id FROM Inventory WHERE barcode_lot_number=? LIMIT 1", (barcode,))
                 existing_cat = cursor.fetchone()
                 
                 if existing_cat and existing_cat[0] != cat_id:
@@ -165,21 +164,20 @@ class BatchInStockScreen:
                     )
                     self.ent_barcode.delete(0, tk.END)
                     return
-                # ------------------------------------------
 
                 for _ in range(qty):
-                    cursor.execute("INSERT INTO Inventory (barcode, catalog_id, lot_number, expiry_date, received_date, status) VALUES (?, ?, ?, ?, ?, 'In_Stock')",
+                    cursor.execute("INSERT INTO Inventory (barcode_lot_number, catalog_id, catalog_number, expiry_date, received_date, status) VALUES (?, ?, ?, ?, ?, 'In_Stock')",
                                     (barcode, cat_id, lot, exp, recv))
                     item_id = cursor.lastrowid
-                    cursor.execute("INSERT INTO AuditLog (item_id, barcode, user_id, action, timestamp) VALUES (?, ?, ?, 'In_Stock', ?)",
+                    cursor.execute("INSERT INTO AuditLog (item_id, barcode_lot_number, user_id, action, timestamp) VALUES (?, ?, ?, 'In_Stock', ?)",
                                     (item_id, barcode, self.user_id, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                          
             if self.on_update: self.on_update()
             
             if qty == 1:
-                success_msg = f"Successfully added 1 item.\n\nProduct: {prod}\nLot Number: {lot}"
+                success_msg = f"Successfully added 1 item.\n\nProduct: {prod}\nCatalog Number: {lot}"
             else:
-                success_msg = f"Successfully added {qty} items!\n\nProduct: {prod}\nLot Number: {lot}"
+                success_msg = f"Successfully added {qty} items!\n\nProduct: {prod}\nCatalog Number: {lot}"
                 
             messagebox.showinfo("Success", success_msg)
             
